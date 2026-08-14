@@ -1,0 +1,13 @@
+{
+  "executionId": "54ca4c38-0474-49e8-b69e-19b54b68902c",
+  "monitorId": "828289fc-9bf1-4133-a822-d42942c0f38a",
+  "type": "TLS",
+  "location": "local",
+  "scheduledAt": "2026-08-14T12:00:00Z",
+  "timeoutMs": 5000,
+  "configuration": {
+    "host": "example.com",
+    "port": 443,
+    "expiryWarningDays": 30
+  }
+}

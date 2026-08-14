@@ -1,0 +1,14 @@
+.env
+.idea/
+.vscode/
+*.iml
+*.log
+
+control-plane/target/
+agent/bin/
+dashboard/.next/
+dashboard/node_modules/
+
+*.tfstate
+*.tfstate.*
+.terraform/

@@ -1,0 +1,77 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "red"}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"expr": "sum(up{job=~\"control-plane|agent\"})", "refId": "A"}],
+      "title": "Healthy services",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 5, "w": 9, "x": 6, "y": 0},
+      "id": 2,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"expr": "sum(rate(pulseops_agent_commands_total{outcome=\"processed\"}[5m])) by (type)", "legendFormat": "{{type}}", "refId": "A"},
+        {"expr": "sum(rate(pulseops_checks_received_total[5m]))", "legendFormat": "results", "refId": "B"}
+      ],
+      "title": "Check throughput",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 5, "w": 9, "x": 15, "y": 0},
+      "id": 3,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(pulseops_agent_check_duration_seconds_bucket[5m])) by (le, type))", "legendFormat": "p95 {{type}}", "refId": "A"}],
+      "title": "Check latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 5},
+      "id": 4,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"expr": "sum(increase(pulseops_agent_kafka_retries_total[15m])) by (topic)", "legendFormat": "agent retries {{topic}}", "refId": "A"},
+        {"expr": "sum(increase(pulseops_kafka_retries_total[15m])) by (topic)", "legendFormat": "control retries {{topic}}", "refId": "B"},
+        {"expr": "sum(increase(pulseops_agent_kafka_dlq_total{outcome=\"success\"}[15m])) by (topic)", "legendFormat": "agent DLQ {{topic}}", "refId": "C"},
+        {"expr": "sum(increase(pulseops_kafka_dlq_recoveries_total[15m])) by (topic)", "legendFormat": "control DLQ {{topic}}", "refId": "D"}
+      ],
+      "title": "Kafka recovery activity",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 5},
+      "id": 5,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"expr": "sum(jvm_memory_used_bytes{area=\"heap\"})", "legendFormat": "used", "refId": "A"},
+        {"expr": "sum(jvm_memory_max_bytes{area=\"heap\"})", "legendFormat": "max", "refId": "B"}
+      ],
+      "title": "Control plane JVM heap",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 41,
+  "tags": ["pulseops", "observability"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "timezone": "browser",
+  "title": "PulseOps Overview",
+  "uid": "pulseops-overview",
+  "version": 1
+}

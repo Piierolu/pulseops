@@ -1,0 +1,62 @@
+spring:
+  application:
+    name: pulseops-control-plane
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/pulseops}
+    username: ${DATABASE_USER:pulseops}
+    password: ${DATABASE_PASSWORD:pulseops}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: record
+    admin:
+      fail-fast: true
+  quartz:
+    job-store-type: memory
+    properties:
+      org.quartz.scheduler.instanceName: pulseops-scheduler
+      org.quartz.threadPool.threadCount: 4
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+
+pulseops:
+  default-location: ${DEFAULT_LOCATION:local}
+  dashboard-origin: ${DASHBOARD_ORIGIN:http://localhost:3000}
+  kafka:
+    commands-topic: check.commands.v1
+    commands-dlq-topic: check.commands.v1.dlq
+    results-topic: check.results.v1
+    results-dlq-topic: check.results.v1.dlq
+    heartbeats-topic: agent.heartbeats.v1
+    heartbeats-dlq-topic: agent.heartbeats.v1.dlq
+    retry:
+      max-attempts: ${KAFKA_RETRY_MAX_ATTEMPTS:3}
+      initial-backoff: ${KAFKA_RETRY_INITIAL_BACKOFF:500ms}
+      max-backoff: ${KAFKA_RETRY_MAX_BACKOFF:5s}
+  notifications:
+    discord-webhook-url: ${DISCORD_WEBHOOK_URL:}

@@ -1,0 +1,11 @@
+{
+  "executionId": "54ca4c38-0474-49e8-b69e-19b54b68902c",
+  "monitorId": "828289fc-9bf1-4133-a822-d42942c0f38a",
+  "agentId": "local-01",
+  "location": "local",
+  "status": "SUCCESS",
+  "latencyMs": 18,
+  "statusCode": 200,
+  "error": null,
+  "checkedAt": "2026-08-14T12:00:00.018Z"
+}
