@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, startTransition, useEffect, useState } from "react";
+import { TeamMembersPanel } from "./team-members-panel";
 
 const API_URL = "/api/control-plane";
 
@@ -62,6 +63,7 @@ export function OperationsConsole({ grafanaUrl, demoMode }: { grafanaUrl: string
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showMembers, setShowMembers] = useState(false);
   const [creating, setCreating] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [monitorType, setMonitorType] = useState<MonitorSnapshot["type"]>("HTTP");
@@ -143,6 +145,7 @@ export function OperationsConsole({ grafanaUrl, demoMode }: { grafanaUrl: string
     setOverview(null);
     setIncidents([]);
     setShowCreate(false);
+    setShowMembers(false);
     setProjectId(nextProjectId);
   }
 
@@ -229,12 +232,21 @@ export function OperationsConsole({ grafanaUrl, demoMode }: { grafanaUrl: string
             <span className="stateDot" />
             NETWORK {platformState}
           </div>
+          {selectedProject && <button className="accessButton" onClick={() => setShowMembers((current) => !current)}>TEAM ACCESS</button>}
           {canEdit && <button className="primaryButton" onClick={() => setShowCreate((current) => !current)}>{showCreate ? "CLOSE" : "+ NEW MONITOR"}</button>}
           {!demoMode && <form action="/api/auth/logout" method="post"><button className="logoutButton">SIGN OUT</button></form>}
         </div>
       </header>
 
       {error && <div className="errorBanner"><strong>CONTROL PLANE</strong>{error}</div>}
+
+      {showMembers && selectedProject && (
+        <TeamMembersPanel
+          teamId={selectedProject.teamId}
+          canManage={selectedProject.role === "OWNER"}
+          onClose={() => setShowMembers(false)}
+        />
+      )}
 
       {showCreate && (
         <section className="createPanel">

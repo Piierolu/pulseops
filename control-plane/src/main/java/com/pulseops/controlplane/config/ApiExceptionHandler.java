@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestControllerAdvice
 class ApiExceptionHandler {
@@ -39,6 +40,13 @@ class ApiExceptionHandler {
                 "timestamp", Instant.now(),
                 "fields", fields
         ));
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    ResponseEntity<ApiError> handleResponseStatus(ResponseStatusException exception) {
+        String message = exception.getReason() == null ? "Request rejected" : exception.getReason();
+        return ResponseEntity.status(exception.getStatusCode())
+                .body(new ApiError("request_rejected", message, Instant.now()));
     }
 
     record ApiError(String code, String message, Instant timestamp) {

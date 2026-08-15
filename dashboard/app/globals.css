@@ -55,6 +55,8 @@ h2 { margin: 5px 0 0; font-size: 23px; letter-spacing: -.025em; font-weight: 500
 .projectSelector select:focus { border-color: var(--signal); }
 .logoutButton { border: 1px solid var(--line); background: transparent; color: var(--muted); padding: 9px 10px; font: 600 9px Consolas, monospace; letter-spacing: .08em; }
 .logoutButton:hover { color: var(--warning); border-color: var(--warning); }
+.accessButton { border: 1px solid #31514e; background: transparent; color: var(--cyan); padding: 9px 10px; font: 600 9px Consolas, monospace; letter-spacing: .08em; }
+.accessButton:hover { border-color: var(--cyan); }
 
 .errorBanner { margin-top: 18px; border: 1px solid #753c25; background: #28160f; padding: 12px 16px; color: #ffc09d; font: 12px Consolas, monospace; display: flex; gap: 18px; }
 .errorBanner strong { color: var(--warning); }
@@ -68,6 +70,28 @@ h2 { margin: 5px 0 0; font-size: 23px; letter-spacing: -.025em; font-weight: 500
 .createPanel .wideField { grid-column: span 2; }
 .deployButton { height: 39px; }
 .deployButton:disabled { opacity: .5; cursor: wait; }
+
+.membersPanel { margin-top: 18px; border: 1px solid #31514e; background: #101515; display: grid; grid-template-columns: 310px minmax(0, 1fr); }
+.membersHeading { padding: 22px; border-right: 1px solid var(--line); position: relative; }
+.membersHeading p:not(.sectionCode) { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.panelClose { margin-top: 22px; border: 1px solid var(--line); background: transparent; color: var(--muted); padding: 8px 10px; font: 600 9px Consolas, monospace; }
+.memberInvite { grid-column: 2; display: grid; grid-template-columns: minmax(180px, 1fr) 130px 150px; gap: 12px; align-items: end; padding: 18px; border-bottom: 1px solid var(--line); }
+.memberInvite label { color: var(--muted); font: 600 9px Consolas, monospace; letter-spacing: .12em; }
+.memberInvite input, .memberInvite select, .memberRow select { width: 100%; margin-top: 7px; border: 1px solid var(--line); background: #090b0b; color: var(--paper); padding: 10px; outline: none; }
+.memberInvite input:focus, .memberInvite select:focus, .memberRow select:focus { border-color: var(--cyan); }
+.memberInvite p { grid-column: 1 / -1; margin: 0; color: var(--muted); font: 9px Consolas, monospace; }
+.membersError { grid-column: 2; padding: 11px 18px; border-bottom: 1px solid #753c25; background: #28160f; color: #ffc09d; font: 11px Consolas, monospace; }
+.memberList { grid-column: 2; max-height: 300px; overflow: auto; }
+.memberRow { min-height: 67px; display: grid; grid-template-columns: minmax(0, 1fr) 45px 125px 70px; gap: 12px; align-items: center; padding: 12px 18px; border-bottom: 1px solid #222624; }
+.memberRow:last-child { border-bottom: 0; }
+.memberIdentity { min-width: 0; }
+.memberIdentity strong { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+.memberIdentity code { display: block; margin-top: 5px; color: var(--muted); font: 9px Consolas, monospace; overflow: hidden; text-overflow: ellipsis; }
+.memberRow select { margin: 0; padding: 7px; font: 10px Consolas, monospace; }
+.youTag, .memberRole { color: var(--cyan); font: 700 9px Consolas, monospace; letter-spacing: .08em; }
+.removeMember { border: 0; background: transparent; color: var(--warning); font: 600 9px Consolas, monospace; }
+.removeMember:disabled { color: var(--muted); cursor: wait; }
+.memberEmpty { min-height: 100px; display: grid; place-items: center; color: var(--muted); font: 10px Consolas, monospace; }
 
 .metricGrid { margin: 18px 0; display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); }
 .metricCard { min-height: 135px; padding: 20px 22px; background: rgba(17,20,20,.94); border-right: 1px solid var(--line); position: relative; overflow: hidden; }
@@ -145,6 +169,9 @@ footer { display: flex; justify-content: space-between; padding: 16px 2px 0; }
   .contentGrid { grid-template-columns: 1fr; }
   .incidentPanel { order: 2; }
   .createPanel { grid-template-columns: 1fr; }
+  .membersPanel { grid-template-columns: 1fr; }
+  .membersHeading { border-right: 0; border-bottom: 1px solid var(--line); }
+  .memberInvite, .membersError, .memberList { grid-column: 1; }
   .agentList { grid-template-columns: 1fr 1fr; }
   .agentItem:nth-child(3n) { border-right: 1px solid var(--line); }
   .agentItem:nth-child(2n) { border-right: 0; }
@@ -157,6 +184,7 @@ footer { display: flex; justify-content: space-between; padding: 16px 2px 0; }
   .projectSelector select { min-width: 125px; max-width: 150px; }
   .networkState { font-size: 9px; }
   .primaryButton { padding: 10px; }
+  .accessButton { padding: 8px; }
   .eyebrow { display: none; }
   h1 { font-size: 23px; }
   .brandMark { width: 37px; height: 37px; }
@@ -165,6 +193,10 @@ footer { display: flex; justify-content: space-between; padding: 16px 2px 0; }
   .metricCard strong { font-size: 27px; }
   .createPanel form { grid-template-columns: 1fr 1fr; }
   .createPanel .wideField { grid-column: span 2; }
+  .memberInvite { grid-template-columns: 1fr 110px; }
+  .memberInvite .deployButton { grid-column: 1 / -1; }
+  .memberRow { grid-template-columns: minmax(0, 1fr) 38px 100px; }
+  .removeMember { grid-column: 3; }
   .monitorLabels { display: none; }
   .monitorRow { grid-template-columns: 1fr auto; min-height: 126px; }
   .monitorIdentity { grid-column: 1 / -1; }
