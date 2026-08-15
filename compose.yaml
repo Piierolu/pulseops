@@ -86,9 +86,10 @@ services:
   dashboard:
     build:
       context: ./dashboard
-      args:
-        NEXT_PUBLIC_API_URL: http://localhost:${CONTROL_PLANE_PORT:-8082}/api
-        NEXT_PUBLIC_GRAFANA_URL: http://localhost:${GRAFANA_PORT:-3001}/d/pulseops-overview/pulseops-overview
+    environment:
+      CONTROL_PLANE_INTERNAL_URL: http://control-plane:8080/api
+      GRAFANA_URL: http://localhost:${GRAFANA_PORT:-3001}/d/pulseops-overview/pulseops-overview
+      ALLOW_UNAUTHENTICATED_MUTATIONS: "true"
     ports:
       - "3000:3000"
     depends_on:
@@ -158,6 +159,7 @@ services:
       - --storage.tsdb.retention.time=15d
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
@@ -166,6 +168,20 @@ services:
         condition: service_healthy
       agent:
         condition: service_started
+      alertmanager:
+        condition: service_started
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
     restart: unless-stopped
 
   grafana:
@@ -194,3 +210,4 @@ volumes:
   kafka-data:
   prometheus-data:
   grafana-data:
+  alertmanager-data:

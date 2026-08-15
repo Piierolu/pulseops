@@ -1,0 +1,49 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      imageTag:
+        description: Immutable image tag
+        required: true
+      namespace:
+        description: Kubernetes namespace
+        default: pulseops
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Configure deployment
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+          PULSEOPS_VALUES: ${{ secrets.PULSEOPS_VALUES }}
+        run: |
+          mkdir -p "$HOME/.kube"
+          printf '%s' "$KUBE_CONFIG" > "$HOME/.kube/config"
+          printf '%s' "$PULSEOPS_VALUES" > "$RUNNER_TEMP/pulseops-values.yaml"
+          chmod 600 "$HOME/.kube/config"
+      - name: Validate production values
+        run: helm lint deploy/helm/pulseops --values "$RUNNER_TEMP/pulseops-values.yaml"
+      - name: Deploy immutable images
+        env:
+          IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
+          IMAGE_TAG: ${{ inputs.imageTag }}
+          NAMESPACE: ${{ inputs.namespace }}
+        run: >-
+          helm upgrade --install pulseops deploy/helm/pulseops
+          --values "$RUNNER_TEMP/pulseops-values.yaml"
+          --namespace "$NAMESPACE"
+          --create-namespace
+          --atomic
+          --wait
+          --timeout 10m
+          --set-string global.imageTag="$IMAGE_TAG"
+          --set-string global.imageRegistry="$IMAGE_REGISTRY"

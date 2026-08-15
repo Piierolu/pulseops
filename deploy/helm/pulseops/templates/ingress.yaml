@@ -1,0 +1,40 @@
+{{- if and .Values.ingress.enabled .Values.ingress.allowPublicReadOnly .Values.dashboard.allowUnauthenticatedMutations }}
+{{- fail "dashboard.allowUnauthenticatedMutations cannot be enabled with ingress.allowPublicReadOnly" }}
+{{- end }}
+{{- if and .Values.ingress.enabled (not .Values.ingress.allowPublicReadOnly) (not .Values.ingress.externalAuthentication) }}
+{{- fail "ingress.externalAuthentication must be enabled, or ingress.allowPublicReadOnly must be explicitly enabled" }}
+{{- end }}
+{{- if and .Values.ingress.enabled .Values.ingress.externalAuthentication (empty .Values.ingress.annotations) }}
+{{- fail "ingress.annotations must configure the declared external authentication boundary" }}
+{{- end }}
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "pulseops.fullname" . }}
+  labels:
+    {{- include "pulseops.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- if .Values.ingress.tlsSecretName }}
+  tls:
+    - hosts: [{{ .Values.ingress.host | quote }}]
+      secretName: {{ .Values.ingress.tlsSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "pulseops.fullname" . }}-dashboard
+                port: {name: http}
+{{- end }}

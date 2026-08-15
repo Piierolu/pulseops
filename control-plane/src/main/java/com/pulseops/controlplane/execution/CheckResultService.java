@@ -13,24 +13,32 @@ import org.springframework.transaction.annotation.Transactional;
 class CheckResultService {
 
     private final CheckResultRepository repository;
+    private final ExecutionReceiptRepository receipts;
     private final IncidentEvaluator incidentEvaluator;
     private final Counter receivedCounter;
+    private final Counter duplicateCounter;
 
     CheckResultService(
             CheckResultRepository repository,
+            ExecutionReceiptRepository receipts,
             IncidentEvaluator incidentEvaluator,
             MeterRegistry meterRegistry
     ) {
         this.repository = repository;
+        this.receipts = receipts;
         this.incidentEvaluator = incidentEvaluator;
         this.receivedCounter = Counter.builder("pulseops.checks.received")
                 .description("Check results received from agents")
+                .register(meterRegistry);
+        this.duplicateCounter = Counter.builder("pulseops.execution.duplicates")
+                .description("Duplicate execution results ignored by the relational receipt")
                 .register(meterRegistry);
     }
 
     @Transactional
     public void save(CheckResultMessage message) {
-        if (repository.existsByExecutionId(message.executionId())) {
+        if (!receipts.record(message)) {
+            duplicateCounter.increment();
             return;
         }
         repository.save(CheckResult.from(message));

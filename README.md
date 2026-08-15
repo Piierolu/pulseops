@@ -34,7 +34,10 @@ Included components:
 - Prometheus metrics from Spring Boot and the Go agent.
 - OpenTelemetry traces across Quartz, Kafka, checks, HTTP, and PostgreSQL.
 - Provisioned Prometheus, Tempo, and Grafana observability stack.
+- Prometheus operational alerts routed through Alertmanager.
 - Bounded Kafka retries and dead-letter topics for commands, results, and heartbeats.
+- Clustered persistent Quartz and a transactional Kafka command outbox.
+- Database-enforced execution receipts for idempotent TimescaleDB results.
 - Incident state machine with automatic opening and recovery.
 - Optional Discord webhook notifications.
 - Responsive Next.js operations dashboard.
@@ -57,7 +60,7 @@ docker compose up --build -d
 docker compose ps
 ```
 
-Open the operations dashboard at `http://localhost:3000` and Grafana at `http://localhost:3001`. Grafana is provisioned with the `PulseOps Overview` dashboard and Prometheus and Tempo data sources. The default local administrator is `admin` / `pulseops`; override it in `.env`.
+Open the operations dashboard at `http://localhost:3000` and Grafana at `http://localhost:3001`. Grafana is provisioned with the `PulseOps Overview` dashboard and Prometheus and Tempo data sources. The default local administrator is `admin` / `pulseops`; override it in `.env`. The dashboard reaches the API through a same-origin server proxy, so the control-plane address is never required by browser JavaScript.
 
 Create a monitor for the included Nginx target:
 
@@ -80,6 +83,7 @@ Operational endpoints:
 GET http://localhost:8082/actuator/health
 GET http://localhost:8082/actuator/prometheus
 GET http://localhost:9090/-/healthy
+GET http://localhost:9093/-/ready
 GET http://localhost:3001/api/health
 GET http://localhost:3200/ready
 ```
@@ -133,6 +137,7 @@ control-plane/  Spring Boot API, scheduler, and result consumer
 dashboard/      Next.js operations console
 docs/adr/       Architecture decision records
 observability/  Collector, Tempo, Prometheus, and Grafana configuration
+deploy/         Helm chart for application-only Kubernetes deployment
 ```
 
 ## Incident rules
@@ -191,6 +196,60 @@ docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
 
 Dead letters retain the original payload and carry source topic, partition, offset, error, and trace headers. Review and correct a payload before manually publishing it back to its source topic; automatic redrive is intentionally not enabled to prevent poison-message loops.
 
+Use the restricted operator CLI instead of piping an unbounded DLQ into a producer. Inspection requires an exact coordinate and hides the payload by default:
+
+```bash
+docker compose run --rm --no-deps --entrypoint /pulseops-dlq agent inspect \
+  --brokers kafka:19092 \
+  --topic check.commands.v1.dlq \
+  --partition 0 \
+  --offset 0
+```
+
+Redrive is a dry-run unless `--execute` is present. It requires the SHA-256 printed by inspection, an operator, and a reason. Destinations are hard-coded, payload schemas are validated, recovery headers are removed, trace headers are retained, and audit headers are added.
+
+```bash
+docker compose run --rm --no-deps --entrypoint /pulseops-dlq agent redrive \
+  --brokers kafka:19092 \
+  --topic check.commands.v1.dlq \
+  --partition 0 \
+  --offset 0 \
+  --sha256 PAYLOAD_SHA256 \
+  --operator "Your Name" \
+  --reason "dependency recovered" \
+  --execute
+```
+
+The original DLQ record is never committed or deleted by this tool.
+
+## Reliable scheduling
+
+Quartz uses its PostgreSQL job store in clustered mode. Stable jobs and triggers survive restarts, and multiple control-plane replicas coordinate firing through the same database.
+
+A Quartz execution inserts a complete command snapshot into `command_outbox` in a database transaction. A separate cluster-safe publisher claims rows with `FOR UPDATE SKIP LOCKED`, waits for Kafka acknowledgement, and then marks them published. Failed sends use capped exponential backoff. Recovery and uncertain sends retain the same deterministic `executionId`.
+
+Result consumers first insert `executionId` into the ordinary PostgreSQL table `check_execution_receipts`. Only the transaction that claims the receipt may write the TimescaleDB result and advance incident state. This avoids the uniqueness limitation of hypertables and makes Kafka redelivery harmless.
+
+## Operational alerts
+
+Prometheus loads eleven rules covering unavailable services, stopped Quartz, outbox age/backlog, command publication failures, DLQ activity, sustained Kafka retries, and API error rate. Alertmanager is available at `http://localhost:9093`. Its local receiver intentionally has no external destination; production routing belongs in the deployment environment.
+
+## CI and Kubernetes
+
+GitHub Actions run Java, Go, dashboard, Compose, Prometheus, Helm, manifest, image-build, and Trivy checks. Version tags publish SBOM-enabled images to GHCR and sign their digests with keyless Cosign. Production deployment remains an approval-gated manual workflow. The production environment must provide `KUBE_CONFIG` and a complete `PULSEOPS_VALUES` Helm values document as encrypted GitHub secrets.
+
+The Helm chart deploys only the control plane, agent, and dashboard. PostgreSQL, Kafka and the observability backend are external dependencies. It requires a pre-existing secret containing `database-username` and `database-password`:
+
+```bash
+helm lint deploy/helm/pulseops --values values-production.yaml
+helm upgrade --install pulseops deploy/helm/pulseops \
+  --namespace pulseops \
+  --create-namespace \
+  --values values-production.yaml
+```
+
+Dashboard mutations are disabled by default in Kubernetes until application authentication is configured. Enabling ingress also requires `ingress.externalAuthentication=true` plus authentication annotations, or an explicit `ingress.allowPublicReadOnly=true` acknowledgement. Public read-only ingress cannot be combined with unauthenticated mutations. Grafana's external URL is configured at runtime through `config.grafanaUrl`.
+
 ## Next milestone
 
-The next vertical will focus on authentication, persistent Quartz scheduling or an outbox, alert rules for Prometheus, and a Kubernetes deployment.
+The next vertical will add OIDC authentication, team and project ownership, monitor lifecycle controls, maintenance windows, configurable incident rules, and SLO reporting.

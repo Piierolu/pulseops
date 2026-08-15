@@ -1,43 +1,54 @@
 package com.pulseops.controlplane.execution;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pulseops.controlplane.monitor.MonitorResponse;
 import com.pulseops.controlplane.monitor.MonitorService;
-import java.time.Clock;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class CheckDispatchService {
 
     private final MonitorService monitors;
-    private final CheckCommandPublisher publisher;
-    private final Clock clock;
+    private final CommandOutboxRepository outbox;
+    private final ObjectMapper objectMapper;
     private final String location;
+    private final String commandsTopic;
 
     public CheckDispatchService(
             MonitorService monitors,
-            CheckCommandPublisher publisher,
-            Clock clock,
-            @Value("${pulseops.default-location}") String location
+            CommandOutboxRepository outbox,
+            ObjectMapper objectMapper,
+            @Value("${pulseops.default-location}") String location,
+            @Value("${pulseops.kafka.commands-topic}") String commandsTopic
     ) {
         this.monitors = monitors;
-        this.publisher = publisher;
-        this.clock = clock;
+        this.outbox = outbox;
+        this.objectMapper = objectMapper;
         this.location = location;
+        this.commandsTopic = commandsTopic;
     }
 
-    public void dispatch(UUID monitorId) {
+    @Transactional
+    public void enqueue(UUID monitorId, Instant scheduledAt) {
         MonitorResponse monitor = monitors.findById(monitorId);
         if (!monitor.enabled()) {
             return;
         }
-        publisher.publish(new CheckCommand(
-                UUID.randomUUID(),
+        Instant scheduleSlot = scheduledAt.truncatedTo(ChronoUnit.MILLIS);
+        UUID executionId = executionId(monitorId, location, scheduleSlot);
+        CheckCommand command = new CheckCommand(
+                executionId,
                 monitor.id(),
                 monitor.type().name(),
                 location,
-                clock.instant(),
+                scheduleSlot,
                 monitor.timeoutMs(),
                 new CheckCommand.Configuration(
                         monitor.targetUrl(),
@@ -48,6 +59,16 @@ public class CheckDispatchService {
                         monitor.expectedValue(),
                         monitor.tlsExpiryWarningDays()
                 )
-        ));
+        );
+        try {
+            outbox.enqueue(command, commandsTopic, objectMapper.writeValueAsString(command), TraceHeaders.capture());
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Could not serialize check command " + executionId, exception);
+        }
+    }
+
+    static UUID executionId(UUID monitorId, String location, Instant scheduledAt) {
+        String source = monitorId + ":" + location + ":" + scheduledAt.toEpochMilli();
+        return UUID.nameUUIDFromBytes(source.getBytes(StandardCharsets.UTF_8));
     }
 }

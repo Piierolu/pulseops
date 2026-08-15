@@ -2,8 +2,7 @@
 
 import { FormEvent, startTransition, useEffect, useState } from "react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8082/api";
-const GRAFANA_URL = process.env.NEXT_PUBLIC_GRAFANA_URL ?? "http://localhost:3001/d/pulseops-overview/pulseops-overview";
+const API_URL = "/api/control-plane";
 
 type Stats = {
   totalMonitors: number;
@@ -55,7 +54,7 @@ type Agent = {
   lastSeenAt: string;
 };
 
-export function OperationsConsole() {
+export function OperationsConsole({ grafanaUrl }: { grafanaUrl: string }) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -171,7 +170,7 @@ export function OperationsConsole() {
           </div>
         </div>
         <div className="topActions">
-          <a className="observabilityLink" href={GRAFANA_URL} target="_blank" rel="noreferrer">OBSERVABILITY</a>
+          <a className="observabilityLink" href={grafanaUrl} target="_blank" rel="noreferrer">OBSERVABILITY</a>
           <div className={`networkState ${platformState.toLowerCase()}`}>
             <span className="stateDot" />
             NETWORK {platformState}

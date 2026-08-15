@@ -3,6 +3,7 @@ package com.pulseops.controlplane.execution;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.IdClass;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.Map;
@@ -12,6 +13,7 @@ import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "check_results")
+@IdClass(CheckResultId.class)
 class CheckResult {
 
     @Id
@@ -45,6 +47,7 @@ class CheckResult {
     @Column(nullable = false, columnDefinition = "jsonb")
     private Map<String, Object> details;
 
+    @Id
     @Column(name = "checked_at", nullable = false)
     private Instant checkedAt;
 

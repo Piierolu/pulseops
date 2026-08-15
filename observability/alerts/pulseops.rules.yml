@@ -1,0 +1,89 @@
+groups:
+  - name: pulseops-availability
+    rules:
+      - alert: PulseOpsControlPlaneDown
+        expr: up{job="control-plane"} == 0 or absent(up{job="control-plane"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: PulseOps control plane is unavailable
+
+      - alert: PulseOpsAgentDown
+        expr: up{job="agent"} == 0 or absent(up{job="agent"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: PulseOps monitoring agent is unavailable
+
+      - alert: PulseOpsQuartzNotRunning
+        expr: pulseops_quartz_scheduler_running == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: The clustered Quartz scheduler is not running
+
+  - name: pulseops-delivery
+    rules:
+      - alert: PulseOpsCommandDeadLettered
+        expr: increase(pulseops_agent_kafka_dlq_total{outcome="success"}[10m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: An agent command was sent to the dead-letter topic
+
+      - alert: PulseOpsControlPlaneRecordDeadLettered
+        expr: increase(pulseops_kafka_dlq_total{outcome="success"}[10m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: A result or heartbeat was sent to a dead-letter topic
+
+      - alert: PulseOpsDlqPublicationFailing
+        expr: increase(pulseops_agent_kafka_dlq_total{outcome="failure"}[5m]) > 0 or increase(pulseops_kafka_dlq_total{outcome="failure"}[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: PulseOps cannot publish a failed record to its DLQ
+
+      - alert: PulseOpsCommandOutboxStuck
+        expr: pulseops_command_outbox_oldest_pending_age_seconds > 120
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: The oldest command has waited more than two minutes for Kafka
+
+      - alert: PulseOpsCommandOutboxBacklog
+        expr: pulseops_command_outbox_pending > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than one hundred commands are waiting for Kafka
+
+      - alert: PulseOpsCommandPublicationFailing
+        expr: increase(pulseops_command_outbox_publish_total{outcome="failure"}[5m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Durable command publication is retrying
+
+      - alert: PulseOpsKafkaRetriesSustained
+        expr: increase(pulseops_kafka_retries_total[10m]) > 5 or increase(pulseops_agent_kafka_retries_total[10m]) > 5
+        labels:
+          severity: warning
+        annotations:
+          summary: Kafka processing retries remain elevated
+
+  - name: pulseops-api
+    rules:
+      - alert: PulseOpsApiHighErrorRate
+        expr: sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count[5m])), 0.001) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than five percent of control-plane requests are failing

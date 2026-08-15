@@ -1,0 +1,48 @@
+global:
+  imageRegistry: ghcr.io/example
+  imageTag: "0.5.0"
+  imagePullPolicy: IfNotPresent
+
+existingSecret: ""
+
+config:
+  databaseUrl: jdbc:postgresql://timescaledb.example:5432/pulseops
+  kafkaBrokers: kafka.example:9092
+  defaultLocation: production
+  otlpEndpoint: http://otel-collector.observability:4318
+  traceSampleRatio: "0.1"
+  grafanaUrl: https://grafana.example.com/d/pulseops-overview/pulseops-overview
+
+controlPlane:
+  replicas: 2
+  image: pulseops-control-plane
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: "1", memory: 1Gi}
+
+agent:
+  replicas: 2
+  image: pulseops-agent
+  idPrefix: production
+  location: production
+  allowPrivateTargets: false
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+
+dashboard:
+  replicas: 2
+  image: pulseops-dashboard
+  allowUnauthenticatedMutations: false
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+
+ingress:
+  enabled: false
+  className: ""
+  host: pulseops.example.com
+  tlsSecretName: ""
+  annotations: {}
+  externalAuthentication: false
+  allowPublicReadOnly: false

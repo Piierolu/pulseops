@@ -1,0 +1,7 @@
+existingSecret: pulseops-secrets
+
+config:
+  databaseUrl: jdbc:postgresql://postgresql.database.svc:5432/pulseops
+  kafkaBrokers: kafka.messaging.svc:9092
+  otlpEndpoint: http://otel-collector.observability.svc:4318
+  grafanaUrl: https://grafana.internal/d/pulseops-overview/pulseops-overview

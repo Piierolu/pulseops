@@ -8,6 +8,7 @@ control-plane/target/
 agent/bin/
 dashboard/.next/
 dashboard/node_modules/
+*.tsbuildinfo
 
 *.tfstate
 *.tfstate.*

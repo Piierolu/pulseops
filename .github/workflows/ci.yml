@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master, main]
+
+permissions:
+  contents: read
+
+jobs:
+  control-plane:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: control-plane
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - run: ./mvnw --batch-mode verify
+        if: ${{ hashFiles('control-plane/mvnw') != '' }}
+      - run: mvn --batch-mode verify
+        if: ${{ hashFiles('control-plane/mvnw') == '' }}
+
+  agent:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: agent/go.sum
+      - run: go test -race ./...
+      - run: go vet ./...
+
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+  platform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: docker compose config --quiet
+      - run: helm lint deploy/helm/pulseops --values deploy/helm/pulseops/values-ci.yaml
+      - run: helm template pulseops deploy/helm/pulseops --values deploy/helm/pulseops/values-ci.yaml > rendered.yaml
+      - run: >-
+          docker run --rm
+          -v "$PWD/rendered.yaml:/manifests/rendered.yaml:ro"
+          ghcr.io/yannh/kubeconform:v0.7.0
+          -strict -summary /manifests/rendered.yaml
+      - run: >-
+          docker run --rm
+          -v "$PWD/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+          -v "$PWD/observability/alerts:/etc/prometheus/rules:ro"
+          --entrypoint promtool prom/prometheus:v3.5.0
+          check config /etc/prometheus/prometheus.yml
+      - uses: aquasecurity/trivy-action@0.32.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+
+  images:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        context: [control-plane, agent, dashboard]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.context }}
+          push: false
+          tags: pulseops-${{ matrix.context }}:ci
+          cache-from: type=gha,scope=${{ matrix.context }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.context }}

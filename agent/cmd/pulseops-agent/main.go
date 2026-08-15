@@ -55,9 +55,19 @@ func main() {
 	}()
 
 	metrics := telemetry.NewAgentMetrics(prometheus.DefaultRegisterer)
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", promhttp.Handler())
+	metricsMux.HandleFunc("/healthz", func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusOK)
+		_, _ = response.Write([]byte("ok\n"))
+	})
+	metricsMux.HandleFunc("/readyz", func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusOK)
+		_, _ = response.Write([]byte("ok\n"))
+	})
 	metricsServer := &http.Server{
 		Addr:              valueOrDefault("METRICS_ADDRESS", ":9464"),
-		Handler:           promhttp.Handler(),
+		Handler:           metricsMux,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {

@@ -1,13 +1,10 @@
 package com.pulseops.controlplane.execution;
 
 import java.util.List;
-import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-interface CheckResultRepository extends JpaRepository<CheckResult, UUID> {
+interface CheckResultRepository extends JpaRepository<CheckResult, CheckResultId> {
 
-    boolean existsByExecutionId(UUID executionId);
-
-    List<CheckResult> findByMonitorIdOrderByCheckedAtDesc(UUID monitorId, Pageable pageable);
+    List<CheckResult> findByMonitorIdOrderByCheckedAtDesc(java.util.UUID monitorId, Pageable pageable);
 }

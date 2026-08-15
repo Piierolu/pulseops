@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pulseops.fullname" . }}
+  labels:
+    {{- include "pulseops.labels" . | nindent 4 }}
+data:
+  DATABASE_URL: {{ .Values.config.databaseUrl | quote }}
+  KAFKA_BOOTSTRAP_SERVERS: {{ .Values.config.kafkaBrokers | quote }}
+  KAFKA_BROKERS: {{ .Values.config.kafkaBrokers | quote }}
+  DEFAULT_LOCATION: {{ .Values.config.defaultLocation | quote }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.config.otlpEndpoint | quote }}
+  OTEL_TRACE_SAMPLE_RATIO: {{ .Values.config.traceSampleRatio | quote }}

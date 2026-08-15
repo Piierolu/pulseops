@@ -17,6 +17,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.CommonErrorHandler;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.kafka.listener.RetryListener;
 import org.springframework.kafka.support.ExponentialBackOffWithMaxRetries;
 
 @Configuration
@@ -51,7 +52,7 @@ class KafkaErrorHandlingConfig {
         );
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
                 transport.template(),
-                (record, exception) -> deadLetterDestination(record, deadLetterTopics, meterRegistry)
+                (record, exception) -> deadLetterDestination(record, deadLetterTopics)
         );
         recoverer.setFailIfSendResultIsError(true);
 
@@ -63,9 +64,30 @@ class KafkaErrorHandlingConfig {
         backOff.setMultiplier(2);
 
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, backOff);
-        errorHandler.setRetryListeners((record, exception, deliveryAttempt) -> {
-            if (deliveryAttempt > 1) {
-                meterRegistry.counter("pulseops.kafka.retries", "topic", record.topic()).increment();
+        errorHandler.setRetryListeners(new RetryListener() {
+            @Override
+            public void failedDelivery(ConsumerRecord<?, ?> record, Exception exception, int deliveryAttempt) {
+                if (deliveryAttempt > 1) {
+                    meterRegistry.counter("pulseops.kafka.retries", "topic", record.topic()).increment();
+                }
+            }
+
+            @Override
+            public void recovered(ConsumerRecord<?, ?> record, Exception exception) {
+                meterRegistry.counter(
+                        "pulseops.kafka.dlq", "topic", record.topic(), "outcome", "success"
+                ).increment();
+            }
+
+            @Override
+            public void recoveryFailed(
+                    ConsumerRecord<?, ?> record,
+                    Exception original,
+                    Exception failure
+            ) {
+                meterRegistry.counter(
+                        "pulseops.kafka.dlq", "topic", record.topic(), "outcome", "failure"
+                ).increment();
             }
         });
         return errorHandler;
@@ -73,11 +95,9 @@ class KafkaErrorHandlingConfig {
 
     private TopicPartition deadLetterDestination(
             ConsumerRecord<?, ?> record,
-            Map<String, String> deadLetterTopics,
-            MeterRegistry meterRegistry
+            Map<String, String> deadLetterTopics
     ) {
         String topic = deadLetterTopics.getOrDefault(record.topic(), record.topic() + ".dlq");
-        meterRegistry.counter("pulseops.kafka.dlq.recoveries", "topic", record.topic()).increment();
         return new TopicPartition(topic, record.partition());
     }
 

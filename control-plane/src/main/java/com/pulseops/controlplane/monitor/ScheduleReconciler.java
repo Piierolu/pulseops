@@ -17,6 +17,6 @@ class ScheduleReconciler implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        monitors.findEnabled().forEach(schedules::schedule);
+        monitors.findEnabled().forEach(schedules::ensureScheduled);
     }
 }
