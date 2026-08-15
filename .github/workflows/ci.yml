@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
       - run: docker compose config --quiet
       - run: helm lint deploy/helm/pulseops --values deploy/helm/pulseops/values-ci.yaml
       - run: helm template pulseops deploy/helm/pulseops --values deploy/helm/pulseops/values-ci.yaml > rendered.yaml
