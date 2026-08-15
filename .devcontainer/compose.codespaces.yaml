@@ -1,0 +1,9 @@
+services:
+  control-plane:
+    environment:
+      DASHBOARD_ORIGIN: https://${CODESPACE_NAME}-3000.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}
+
+  dashboard:
+    environment:
+      DASHBOARD_PUBLIC_URL: https://${CODESPACE_NAME}-3000.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}
+      GRAFANA_URL: https://${CODESPACE_NAME}-3001.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}/d/pulseops-overview/pulseops-overview

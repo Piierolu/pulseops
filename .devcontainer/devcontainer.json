@@ -1,0 +1,30 @@
+{
+  "name": "PulseOps Demo",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "8gb",
+    "storage": "32gb"
+  },
+  "forwardPorts": [3000, 3001, 8082],
+  "portsAttributes": {
+    "3000": {
+      "label": "PulseOps dashboard",
+      "onAutoForward": "notify"
+    },
+    "3001": {
+      "label": "Grafana",
+      "onAutoForward": "notify"
+    },
+    "8082": {
+      "label": "Control plane API",
+      "onAutoForward": "silent"
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/build-demo.sh",
+  "postStartCommand": "bash .devcontainer/start-demo.sh",
+  "remoteUser": "vscode"
+}

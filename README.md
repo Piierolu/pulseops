@@ -2,6 +2,22 @@
 
 PulseOps is a portfolio project for distributed synthetic monitoring and automated incident response. It executes HTTP, TCP, DNS, and TLS checks, maintains incident state, exposes end-to-end telemetry, and presents live operational data in a Next.js console.
 
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Piierolu/pulseops?quickstart=1)
+
+## Interactive demo
+
+Click **Open in GitHub Codespaces**, create the suggested 4-core codespace, and wait for the terminal to report that the demo is ready. The first build can take several minutes. Open the **PORTS** tab and select port `3000` for PulseOps or port `3001` for Grafana. Forwarded ports remain private to the authenticated Codespaces user.
+
+The environment starts the complete Docker Compose stack and seeds HTTP, TCP, DNS, and TLS monitors. In the PulseOps dashboard:
+
+1. Select a monitor to inspect its configuration and latest results.
+2. Pause it and confirm that new checks stop.
+3. Edit its target or interval, then resume it.
+4. Archive it to retain history without scheduling new checks.
+5. Restore it; restored monitors remain paused until explicitly resumed.
+
+Codespaces preserves its Docker volumes across stops. Run `docker compose down -v` only when you want to reset all demo data.
+
 ## Current architecture
 
 ```text
@@ -125,6 +141,10 @@ GET    /api/projects
 POST   /api/projects/{projectId}/monitors
 GET    /api/projects/{projectId}/monitors
 GET    /api/projects/{projectId}/monitors/{monitorId}
+PUT    /api/projects/{projectId}/monitors/{monitorId}
+POST   /api/projects/{projectId}/monitors/{monitorId}/pause
+POST   /api/projects/{projectId}/monitors/{monitorId}/resume
+POST   /api/projects/{projectId}/monitors/{monitorId}/restore
 DELETE /api/projects/{projectId}/monitors/{monitorId}
 GET    /api/projects/{projectId}/monitors/{monitorId}/results?limit=100
 GET    /api/projects/{projectId}/incidents?status=OPEN
