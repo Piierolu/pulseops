@@ -67,8 +67,13 @@ services:
       KAFKA_RETRY_MAX_ATTEMPTS: ${KAFKA_RETRY_MAX_ATTEMPTS:-3}
       KAFKA_RETRY_INITIAL_BACKOFF: ${KAFKA_RETRY_INITIAL_BACKOFF:-500ms}
       KAFKA_RETRY_MAX_BACKOFF: ${KAFKA_RETRY_MAX_BACKOFF:-5s}
+      SECURITY_MODE: ${SECURITY_MODE:-demo}
+      OIDC_ISSUER_URI: ${OIDC_ISSUER_URI:-}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-}
+      BOOTSTRAP_ISSUER: ${BOOTSTRAP_ISSUER:-}
+      BOOTSTRAP_SUBJECT: ${BOOTSTRAP_SUBJECT:-}
     ports:
-      - "${CONTROL_PLANE_PORT:-8082}:8080"
+      - "127.0.0.1:${CONTROL_PLANE_PORT:-8082}:8080"
     depends_on:
       timescaledb:
         condition: service_healthy
@@ -89,9 +94,15 @@ services:
     environment:
       CONTROL_PLANE_INTERNAL_URL: http://control-plane:8080/api
       GRAFANA_URL: http://localhost:${GRAFANA_PORT:-3001}/d/pulseops-overview/pulseops-overview
-      ALLOW_UNAUTHENTICATED_MUTATIONS: "true"
+      SECURITY_MODE: ${SECURITY_MODE:-demo}
+      DASHBOARD_PUBLIC_URL: ${DASHBOARD_PUBLIC_URL:-http://localhost:3000}
+      OIDC_ISSUER_URI: ${OIDC_ISSUER_URI:-}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      AUTH_SECRET: ${AUTH_SECRET:-}
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       control-plane:
         condition: service_healthy

@@ -44,7 +44,7 @@ Included components:
 - Agent heartbeats with online/offline detection.
 - Docker Compose development environment.
 
-Kubernetes deployment, durable scheduling, and authentication are planned for later verticals.
+Kubernetes deployment, durable scheduling, generic OIDC authentication, and project RBAC are implemented. Maintenance windows, configurable incident policies, and SLO reporting remain future verticals.
 
 ## Requirements
 
@@ -60,12 +60,12 @@ docker compose up --build -d
 docker compose ps
 ```
 
-Open the operations dashboard at `http://localhost:3000` and Grafana at `http://localhost:3001`. Grafana is provisioned with the `PulseOps Overview` dashboard and Prometheus and Tempo data sources. The default local administrator is `admin` / `pulseops`; override it in `.env`. The dashboard reaches the API through a same-origin server proxy, so the control-plane address is never required by browser JavaScript.
+Open the operations dashboard at `http://localhost:3000` and Grafana at `http://localhost:3001`. Compose uses a fixed demo identity with `OWNER` access to the legacy team and default project. Dashboard and control-plane host ports bind to loopback so this bypass is not network-accessible. Grafana is provisioned with the `PulseOps Overview` dashboard and Prometheus and Tempo data sources. The dashboard reaches the API through a same-origin server proxy.
 
 Create a monitor for the included Nginx target:
 
 ```bash
-curl.exe -X POST http://localhost:8082/api/monitors \
+curl.exe -X POST http://localhost:8082/api/projects/00000000-0000-0000-0000-000000000002/monitors \
   -H "Content-Type: application/json" \
   -d '{"name":"Demo target","targetUrl":"http://demo-target","frequencySeconds":15,"timeoutMs":5000,"expectedStatus":200}'
 ```
@@ -73,8 +73,8 @@ curl.exe -X POST http://localhost:8082/api/monitors \
 After the first scheduled execution, list monitors and results:
 
 ```bash
-curl.exe http://localhost:8082/api/monitors
-curl.exe http://localhost:8082/api/monitors/MONITOR_ID/results
+curl.exe http://localhost:8082/api/projects
+curl.exe http://localhost:8082/api/projects/00000000-0000-0000-0000-000000000002/monitors/MONITOR_ID/results
 ```
 
 Operational endpoints:
@@ -116,17 +116,32 @@ npm --prefix ./dashboard run build
 ## API implemented
 
 ```text
-POST   /api/monitors
-GET    /api/monitors
-GET    /api/monitors/{id}
-DELETE /api/monitors/{id}
-GET    /api/monitors/{id}/results?limit=100
-GET    /api/incidents?status=OPEN
-GET    /api/overview
-GET    /api/agents
+GET    /api/me
+GET    /api/teams
+POST   /api/teams
+GET    /api/teams/{teamId}/projects
+POST   /api/teams/{teamId}/projects
+GET    /api/projects
+POST   /api/projects/{projectId}/monitors
+GET    /api/projects/{projectId}/monitors
+GET    /api/projects/{projectId}/monitors/{monitorId}
+DELETE /api/projects/{projectId}/monitors/{monitorId}
+GET    /api/projects/{projectId}/monitors/{monitorId}/results?limit=100
+GET    /api/projects/{projectId}/incidents?status=OPEN
+GET    /api/projects/{projectId}/overview
 ```
 
-Monitor frequencies range from 10 seconds to 24 hours. HTTP, TCP, DNS, and TLS monitors are supported. The agent blocks private, loopback, link-local, multicast, and unspecified connection targets by default. `ALLOW_PRIVATE_TARGETS=true` is enabled only for the local demo agent so it can reach `demo-target` inside the Compose network.
+Monitor frequencies range from 10 seconds to 24 hours. HTTP, TCP, DNS, and TLS monitors are supported. Deleting a monitor archives and unschedules it while retaining historical results. The agent blocks private, loopback, link-local, multicast, and unspecified connection targets by default. `ALLOW_PRIVATE_TARGETS=true` is enabled only for the loopback-bound local demo so it can reach `demo-target` inside the Compose network.
+
+## Identity and project access
+
+Production runs the control plane as an OAuth 2.0 resource server. It validates JWT signature, issuer, time claims, and `aud`; users are keyed by immutable issuer and subject. The dashboard uses Authorization Code with PKCE, stores the access token in an encrypted HTTP-only cookie, validates state and nonce, and forwards the bearer token from the same-origin BFF. Its callback is `https://YOUR_PULSEOPS_HOST/api/auth/callback`.
+
+Teams own projects and membership roles apply to every project in the team: `OWNER`, `ADMIN`, `EDITOR`, and `VIEWER`. Viewers read project operations; editors manage monitors; admins create projects; owners additionally establish ownership. Cross-project monitor IDs return `404`.
+
+Every OIDC-mode startup requires an explicit bootstrap identity whose issuer exactly matches the configured OIDC issuer. Set `BOOTSTRAP_ISSUER` and `BOOTSTRAP_SUBJECT` to grant that subject `OWNER` on the migrated legacy team. PulseOps never promotes the first arbitrary login.
+
+Access-token sessions intentionally expire with the provider token instead of persisting refresh tokens in stateless dashboard replicas. A new authorization request normally completes silently while the provider SSO session remains active.
 
 ## Repository layout
 
@@ -238,7 +253,7 @@ Prometheus loads eleven rules covering unavailable services, stopped Quartz, out
 
 GitHub Actions run Java, Go, dashboard, Compose, Prometheus, Helm, manifest, image-build, and Trivy checks. Version tags publish SBOM-enabled images to GHCR and sign their digests with keyless Cosign. Production deployment remains an approval-gated manual workflow. The production environment must provide `KUBE_CONFIG` and a complete `PULSEOPS_VALUES` Helm values document as encrypted GitHub secrets.
 
-The Helm chart deploys only the control plane, agent, and dashboard. PostgreSQL, Kafka and the observability backend are external dependencies. It requires a pre-existing secret containing `database-username` and `database-password`:
+The Helm chart deploys only the control plane, agent, and dashboard. PostgreSQL, Kafka, the OIDC provider, and the observability backend are external dependencies. It requires a pre-existing secret containing `database-username`, `database-password`, `oidc-client-secret`, and a random `auth-secret` of at least 32 characters:
 
 ```bash
 helm lint deploy/helm/pulseops --values values-production.yaml
@@ -248,8 +263,8 @@ helm upgrade --install pulseops deploy/helm/pulseops \
   --values values-production.yaml
 ```
 
-Dashboard mutations are disabled by default in Kubernetes until application authentication is configured. Enabling ingress also requires `ingress.externalAuthentication=true` plus authentication annotations, or an explicit `ingress.allowPublicReadOnly=true` acknowledgement. Public read-only ingress cannot be combined with unauthenticated mutations. Grafana's external URL is configured at runtime through `config.grafanaUrl`.
+Helm requires HTTPS when ingress is enabled because the OIDC callback and secure session cookie cannot operate over plaintext. Production values must include issuer, API audience, dashboard client ID/public URL, and the immutable bootstrap issuer/subject. Grafana's external URL is configured at runtime through `config.grafanaUrl`.
 
 ## Next milestone
 
-The next vertical will add OIDC authentication, team and project ownership, monitor lifecycle controls, maintenance windows, configurable incident rules, and SLO reporting.
+The next vertical will add monitor editing and pause controls, maintenance windows, configurable incident rules and notifications, and SLO reporting.

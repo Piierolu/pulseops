@@ -13,6 +13,14 @@ config:
   traceSampleRatio: "0.1"
   grafanaUrl: https://grafana.example.com/d/pulseops-overview/pulseops-overview
 
+security:
+  issuerUri: https://identity.example.com/realms/pulseops
+  audience: pulseops-api
+  dashboardClientId: pulseops-dashboard
+  dashboardPublicUrl: https://pulseops.example.com
+  bootstrapIssuer: https://identity.example.com/realms/pulseops
+  bootstrapSubject: ""
+
 controlPlane:
   replicas: 2
   image: pulseops-control-plane
@@ -33,7 +41,6 @@ agent:
 dashboard:
   replicas: 2
   image: pulseops-dashboard
-  allowUnauthenticatedMutations: false
   resources:
     requests: {cpu: 100m, memory: 128Mi}
     limits: {cpu: 500m, memory: 256Mi}
@@ -44,5 +51,3 @@ ingress:
   host: pulseops.example.com
   tlsSecretName: ""
   annotations: {}
-  externalAuthentication: false
-  allowPublicReadOnly: false

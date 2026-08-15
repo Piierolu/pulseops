@@ -5,7 +5,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MonitorService {
@@ -14,15 +16,22 @@ public class MonitorService {
 
     private final MonitorRepository repository;
     private final MonitorScheduleService schedules;
+    private final JdbcTemplate jdbcTemplate;
     private final Clock clock;
 
-    public MonitorService(MonitorRepository repository, MonitorScheduleService schedules, Clock clock) {
+    public MonitorService(
+            MonitorRepository repository,
+            MonitorScheduleService schedules,
+            JdbcTemplate jdbcTemplate,
+            Clock clock
+    ) {
         this.repository = repository;
         this.schedules = schedules;
+        this.jdbcTemplate = jdbcTemplate;
         this.clock = clock;
     }
 
-    public MonitorResponse create(CreateMonitorRequest request) {
+    public MonitorResponse create(UUID projectId, CreateMonitorRequest request) {
         MonitorType type = request.type() == null ? MonitorType.HTTP : request.type();
         validateTarget(request, type);
         Instant now = clock.instant();
@@ -43,6 +52,7 @@ public class MonitorService {
         }
         Monitor monitor = new Monitor(
                 UUID.randomUUID(),
+                projectId,
                 request.name().trim(),
                 type,
                 request.targetUrl() == null ? null : request.targetUrl().toASCIIString(),
@@ -62,28 +72,55 @@ public class MonitorService {
         return MonitorResponse.from(saved);
     }
 
-    public List<MonitorResponse> findAll() {
-        return repository.findAllByOrderByCreatedAtDesc().stream()
+    public List<MonitorResponse> findAll(UUID projectId) {
+        return repository.findAllByProjectIdAndArchivedAtIsNullOrderByCreatedAtDesc(projectId).stream()
                 .map(MonitorResponse::from)
                 .toList();
     }
 
-    public MonitorResponse findById(UUID id) {
-        return MonitorResponse.from(getRequired(id));
+    public MonitorResponse findById(UUID projectId, UUID id) {
+        return MonitorResponse.from(getProjectRequired(projectId, id));
     }
 
-    public void delete(UUID id) {
-        Monitor monitor = getRequired(id);
+    @Transactional
+    public void archive(UUID projectId, UUID id) {
+        Monitor monitor = repository.findActiveByIdAndProjectIdForUpdate(id, projectId)
+                .orElseThrow(() -> new MonitorNotFoundException(id));
         schedules.unschedule(monitor.getId());
-        repository.delete(monitor);
+        monitor.archive(clock.instant());
+        repository.save(monitor);
+        jdbcTemplate.update("""
+                UPDATE incidents
+                SET status = 'RESOLVED', resolved_at = ?, updated_at = ?
+                WHERE monitor_id = ? AND status = 'OPEN'
+                """, monitor.getArchivedAt(), monitor.getArchivedAt(), monitor.getId());
     }
 
-    Monitor getRequired(UUID id) {
+    public void requireProjectHistory(UUID projectId, UUID id) {
+        repository.findByIdAndProjectId(id, projectId)
+                .orElseThrow(() -> new MonitorNotFoundException(id));
+    }
+
+    public MonitorResponse findForBackground(UUID id) {
+        return MonitorResponse.from(getRequiredGlobal(id));
+    }
+
+    public MonitorResponse findForBackgroundForUpdate(UUID id) {
+        return MonitorResponse.from(repository.findByIdForUpdate(id)
+                .orElseThrow(() -> new MonitorNotFoundException(id)));
+    }
+
+    private Monitor getProjectRequired(UUID projectId, UUID id) {
+        return repository.findByIdAndProjectIdAndArchivedAtIsNull(id, projectId)
+                .orElseThrow(() -> new MonitorNotFoundException(id));
+    }
+
+    private Monitor getRequiredGlobal(UUID id) {
         return repository.findById(id).orElseThrow(() -> new MonitorNotFoundException(id));
     }
 
     List<Monitor> findEnabled() {
-        return repository.findAllByEnabledTrue();
+        return repository.findAllByEnabledTrueAndArchivedAtIsNull();
     }
 
     private void validateTarget(CreateMonitorRequest request, MonitorType type) {

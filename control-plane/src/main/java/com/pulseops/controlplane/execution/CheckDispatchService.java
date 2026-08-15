@@ -37,8 +37,8 @@ public class CheckDispatchService {
 
     @Transactional
     public void enqueue(UUID monitorId, Instant scheduledAt) {
-        MonitorResponse monitor = monitors.findById(monitorId);
-        if (!monitor.enabled()) {
+        MonitorResponse monitor = monitors.findForBackground(monitorId);
+        if (!monitor.enabled() || monitor.archivedAt() != null) {
             return;
         }
         Instant scheduleSlot = scheduledAt.truncatedTo(ChronoUnit.MILLIS);

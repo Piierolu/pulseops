@@ -41,6 +41,9 @@ public class IncidentEvaluator {
     }
 
     public void evaluate(CheckResultMessage result) {
+        if (monitors.findForBackgroundForUpdate(result.monitorId()).archivedAt() != null) {
+            return;
+        }
         Instant now = clock.instant();
         MonitorState state = states.findForUpdate(result.monitorId())
                 .orElseGet(() -> MonitorState.pending(result.monitorId(), now));
@@ -61,7 +64,7 @@ public class IncidentEvaluator {
             return;
         }
         Incident incident = incidents.save(Incident.open(monitorId, FAILURE_CAUSE, now));
-        MonitorResponse monitor = monitors.findById(monitorId);
+        MonitorResponse monitor = monitors.findForBackground(monitorId);
         events.publishEvent(new IncidentChangedEvent(
                 incident.getId(), monitorId, monitor.name(), IncidentStatus.OPEN, now
         ));
@@ -71,7 +74,7 @@ public class IncidentEvaluator {
     private void resolveIncident(java.util.UUID monitorId, Instant now) {
         incidents.findFirstByMonitorIdAndStatus(monitorId, IncidentStatus.OPEN).ifPresent(incident -> {
             incident.resolve(now);
-            MonitorResponse monitor = monitors.findById(monitorId);
+            MonitorResponse monitor = monitors.findForBackground(monitorId);
             events.publishEvent(new IncidentChangedEvent(
                     incident.getId(), monitorId, monitor.name(), IncidentStatus.RESOLVED, now
             ));

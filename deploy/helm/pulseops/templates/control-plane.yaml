@@ -45,6 +45,11 @@ spec:
             - {name: OTEL_LOGS_EXPORTER, value: none}
             - {name: OTEL_TRACES_SAMPLER, value: parentbased_traceidratio}
             - {name: OTEL_TRACES_SAMPLER_ARG, value: {{ .Values.config.traceSampleRatio | quote }}}
+            - {name: SECURITY_MODE, value: oidc}
+            - {name: OIDC_ISSUER_URI, value: {{ .Values.security.issuerUri | quote }}}
+            - {name: OIDC_AUDIENCE, value: {{ .Values.security.audience | quote }}}
+            - {name: BOOTSTRAP_ISSUER, value: {{ .Values.security.bootstrapIssuer | quote }}}
+            - {name: BOOTSTRAP_SUBJECT, value: {{ .Values.security.bootstrapSubject | quote }}}
           readinessProbe:
             httpGet: {path: /actuator/health/readiness, port: http}
             initialDelaySeconds: 20

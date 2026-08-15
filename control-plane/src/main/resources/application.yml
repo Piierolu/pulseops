@@ -57,6 +57,14 @@ management:
 pulseops:
   default-location: ${DEFAULT_LOCATION:local}
   dashboard-origin: ${DASHBOARD_ORIGIN:http://localhost:3000}
+  security:
+    mode: ${SECURITY_MODE:oidc}
+    oidc:
+      issuer-uri: ${OIDC_ISSUER_URI:}
+      audience: ${OIDC_AUDIENCE:}
+    bootstrap:
+      issuer: ${BOOTSTRAP_ISSUER:}
+      subject: ${BOOTSTRAP_SUBJECT:}
   kafka:
     commands-topic: check.commands.v1
     commands-dlq-topic: check.commands.v1.dlq

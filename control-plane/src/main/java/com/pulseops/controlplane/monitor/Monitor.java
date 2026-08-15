@@ -16,6 +16,9 @@ public class Monitor {
     @Id
     private UUID id;
 
+    @Column(name = "project_id", nullable = false, updatable = false)
+    private UUID projectId;
+
     @Column(nullable = false, length = 120)
     private String name;
 
@@ -59,11 +62,15 @@ public class Monitor {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(name = "archived_at")
+    private Instant archivedAt;
+
     protected Monitor() {
     }
 
     Monitor(
             UUID id,
+            UUID projectId,
             String name,
             MonitorType type,
             String targetUrl,
@@ -79,6 +86,7 @@ public class Monitor {
             Instant createdAt
     ) {
         this.id = id;
+        this.projectId = projectId;
         this.name = name;
         this.type = type;
         this.targetUrl = targetUrl;
@@ -97,6 +105,10 @@ public class Monitor {
 
     public UUID getId() {
         return id;
+    }
+
+    public UUID getProjectId() {
+        return projectId;
     }
 
     public String getName() {
@@ -153,5 +165,15 @@ public class Monitor {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public Instant getArchivedAt() {
+        return archivedAt;
+    }
+
+    void archive(Instant now) {
+        enabled = false;
+        archivedAt = now;
+        updatedAt = now;
     }
 }

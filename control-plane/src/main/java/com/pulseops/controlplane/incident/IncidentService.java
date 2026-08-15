@@ -1,6 +1,7 @@
 package com.pulseops.controlplane.incident;
 
 import java.util.List;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,10 +15,10 @@ class IncidentService {
     }
 
     @Transactional(readOnly = true)
-    List<IncidentResponse> findAll(IncidentStatus status) {
+    List<IncidentResponse> findAll(UUID projectId, IncidentStatus status) {
         List<Incident> incidents = status == null
-                ? repository.findAllByOrderByOpenedAtDesc()
-                : repository.findAllByStatusOrderByOpenedAtDesc(status);
+                ? repository.findAllByProjectId(projectId)
+                : repository.findAllByProjectIdAndStatus(projectId, status);
         return incidents.stream().map(Incident::toResponse).toList();
     }
 }

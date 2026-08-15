@@ -5,6 +5,7 @@ import java.util.UUID;
 
 public record MonitorResponse(
         UUID id,
+        UUID projectId,
         String name,
         MonitorType type,
         String targetUrl,
@@ -18,11 +19,13 @@ public record MonitorResponse(
         Integer expectedStatus,
         boolean enabled,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        Instant archivedAt
 ) {
     static MonitorResponse from(Monitor monitor) {
         return new MonitorResponse(
                 monitor.getId(),
+                monitor.getProjectId(),
                 monitor.getName(),
                 monitor.getType(),
                 monitor.getTargetUrl(),
@@ -36,7 +39,8 @@ public record MonitorResponse(
                 monitor.getExpectedStatus(),
                 monitor.isEnabled(),
                 monitor.getCreatedAt(),
-                monitor.getUpdatedAt()
+                monitor.getUpdatedAt(),
+                monitor.getArchivedAt()
         );
     }
 }

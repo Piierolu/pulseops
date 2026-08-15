@@ -45,19 +45,21 @@ type Incident = {
   resolvedAt: string | null;
 };
 
-type Agent = {
-  agentId: string;
-  location: string;
-  version: string;
-  status: "ONLINE" | "OFFLINE";
-  firstSeenAt: string;
-  lastSeenAt: string;
+type ProjectRole = "OWNER" | "ADMIN" | "EDITOR" | "VIEWER";
+
+type Project = {
+  id: string;
+  teamId: string;
+  name: string;
+  slug: string;
+  role: ProjectRole;
 };
 
-export function OperationsConsole({ grafanaUrl }: { grafanaUrl: string }) {
+export function OperationsConsole({ grafanaUrl, demoMode }: { grafanaUrl: string; demoMode: boolean }) {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectId, setProjectId] = useState<string | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [incidents, setIncidents] = useState<Incident[]>([]);
-  const [agents, setAgents] = useState<Agent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -67,24 +69,57 @@ export function OperationsConsole({ grafanaUrl }: { grafanaUrl: string }) {
   useEffect(() => {
     let active = true;
 
+    async function loadProjects() {
+      try {
+        const response = await fetch(`${API_URL}/projects`, { cache: "no-store" });
+        if (response.status === 401) {
+          window.location.assign("/api/auth/login?returnTo=/");
+          return;
+        }
+        if (!response.ok) throw new Error("No se pudieron cargar los proyectos");
+        const available = (await response.json()) as Project[];
+        if (!active) return;
+        const stored = window.localStorage.getItem("pulseops.projectId");
+        const selected = available.find((project) => project.id === stored) ?? available[0];
+        startTransition(() => {
+          setProjects(available);
+          setProjectId(selected?.id ?? null);
+          setError(available.length === 0 ? "Tu identidad no tiene proyectos asignados" : null);
+        });
+      } catch (loadError) {
+        if (active) setError(loadError instanceof Error ? loadError.message : "No se pudo cargar PulseOps");
+      }
+    }
+
+    void loadProjects();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!projectId) return;
+    let active = true;
+
     async function load() {
       try {
-        const [overviewResponse, incidentsResponse, agentsResponse] = await Promise.all([
-          fetch(`${API_URL}/overview`, { cache: "no-store" }),
-          fetch(`${API_URL}/incidents`, { cache: "no-store" }),
-          fetch(`${API_URL}/agents`, { cache: "no-store" }),
+        const [overviewResponse, incidentsResponse] = await Promise.all([
+          fetch(`${API_URL}/projects/${projectId}/overview`, { cache: "no-store" }),
+          fetch(`${API_URL}/projects/${projectId}/incidents`, { cache: "no-store" }),
         ]);
-        if (!overviewResponse.ok || !incidentsResponse.ok || !agentsResponse.ok) {
+        if ([overviewResponse, incidentsResponse].some((response) => response.status === 401)) {
+          window.location.assign("/api/auth/login?returnTo=/");
+          return;
+        }
+        if (!overviewResponse.ok || !incidentsResponse.ok) {
           throw new Error("El control plane respondio con un error");
         }
         const nextOverview = (await overviewResponse.json()) as Overview;
         const nextIncidents = (await incidentsResponse.json()) as Incident[];
-        const nextAgents = (await agentsResponse.json()) as Agent[];
         if (active) {
           startTransition(() => {
             setOverview(nextOverview);
             setIncidents(nextIncidents.slice(0, 8));
-            setAgents(nextAgents);
             setError(null);
           });
         }
@@ -101,10 +136,19 @@ export function OperationsConsole({ grafanaUrl }: { grafanaUrl: string }) {
       active = false;
       window.clearInterval(interval);
     };
-  }, [refreshKey]);
+  }, [projectId, refreshKey]);
+
+  function selectProject(nextProjectId: string) {
+    window.localStorage.setItem("pulseops.projectId", nextProjectId);
+    setOverview(null);
+    setIncidents([]);
+    setShowCreate(false);
+    setProjectId(nextProjectId);
+  }
 
   async function createMonitor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!projectId) return;
     setCreating(true);
     const form = new FormData(event.currentTarget);
     const payload: Record<string, string | number | null> = {
@@ -131,7 +175,7 @@ export function OperationsConsole({ grafanaUrl }: { grafanaUrl: string }) {
     }
 
     try {
-      const response = await fetch(`${API_URL}/monitors`, {
+      const response = await fetch(`${API_URL}/projects/${projectId}/monitors`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -152,6 +196,8 @@ export function OperationsConsole({ grafanaUrl }: { grafanaUrl: string }) {
   }
 
   const stats = overview?.stats;
+  const selectedProject = projects.find((project) => project.id === projectId);
+  const canEdit = selectedProject ? selectedProject.role !== "VIEWER" : false;
   const monitorNames = new Map(overview?.monitors.map((monitor) => [monitor.id, monitor.name]));
   const platformState = !overview
     ? "CONNECTING"
@@ -170,14 +216,21 @@ export function OperationsConsole({ grafanaUrl }: { grafanaUrl: string }) {
           </div>
         </div>
         <div className="topActions">
+          {projects.length > 0 && (
+            <label className="projectSelector">
+              <span>PROJECT / {selectedProject?.role ?? "--"}</span>
+              <select value={projectId ?? ""} onChange={(event) => selectProject(event.target.value)}>
+                {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+              </select>
+            </label>
+          )}
           <a className="observabilityLink" href={grafanaUrl} target="_blank" rel="noreferrer">OBSERVABILITY</a>
           <div className={`networkState ${platformState.toLowerCase()}`}>
             <span className="stateDot" />
             NETWORK {platformState}
           </div>
-          <button className="primaryButton" onClick={() => setShowCreate((current) => !current)}>
-            {showCreate ? "CLOSE" : "+ NEW MONITOR"}
-          </button>
+          {canEdit && <button className="primaryButton" onClick={() => setShowCreate((current) => !current)}>{showCreate ? "CLOSE" : "+ NEW MONITOR"}</button>}
+          {!demoMode && <form action="/api/auth/logout" method="post"><button className="logoutButton">SIGN OUT</button></form>}
         </div>
       </header>
 
@@ -210,11 +263,11 @@ export function OperationsConsole({ grafanaUrl }: { grafanaUrl: string }) {
         </section>
       )}
 
-      <section className="metricGrid" aria-label="Metricas globales">
+      <section className="metricGrid" aria-label="Metricas del proyecto">
         <Metric label="GLOBAL UPTIME / 24H" value={formatAvailability(stats?.availability24h)} detail={`${stats?.checks24h ?? 0} checks sampled`} tone="green" />
         <Metric label="ACTIVE INCIDENTS" value={String(stats?.openIncidents ?? 0).padStart(2, "0")} detail={`${stats?.downMonitors ?? 0} services down`} tone={stats?.openIncidents ? "orange" : "neutral"} />
         <Metric label="MEAN RESPONSE" value={`${Math.round(stats?.averageLatencyMs ?? 0)} ms`} detail="all locations / 24h" tone="neutral" />
-        <Metric label="AGENT MESH" value={`${stats?.onlineAgents ?? 0}/${stats?.totalAgents ?? 0}`} detail={`${stats?.totalMonitors ?? 0} monitors deployed`} tone={stats?.onlineAgents ? "neutral" : "orange"} />
+        <Metric label="MONITOR FLEET" value={String(stats?.totalMonitors ?? 0).padStart(2, "0")} detail={`${stats?.upMonitors ?? 0} services nominal`} tone={stats?.downMonitors ? "orange" : "neutral"} />
       </section>
 
       <div className="contentGrid">
@@ -257,27 +310,9 @@ export function OperationsConsole({ grafanaUrl }: { grafanaUrl: string }) {
         </aside>
       </div>
 
-      <section className="agentPanel">
-        <div className="sectionHeader">
-          <div><p className="sectionCode">DISTRIBUTED / EXECUTORS</p><h2>Agent mesh</h2></div>
-          <span className="eventCount">{agents.length}</span>
-        </div>
-        <div className="agentList">
-          {agents.length === 0 && <EmptyState text="Awaiting the first agent heartbeat." />}
-          {agents.map((agent) => (
-            <article className="agentItem" key={agent.agentId}>
-              <span className={`agentBeacon ${agent.status.toLowerCase()}`} />
-              <div><strong>{agent.agentId}</strong><code>{agent.location}</code></div>
-              <span className={`statusTag ${agent.status === "ONLINE" ? "up" : "down"}`}>{agent.status}</span>
-              <div className="agentMeta"><span>v{agent.version}</span><time>{formatDate(agent.lastSeenAt)}</time></div>
-            </article>
-          ))}
-        </div>
-      </section>
-
       <footer>
         <span>PULSEOPS CONTROL PLANE // BUILD 0.3</span>
-        <span>HTTP · TCP · DNS · TLS</span>
+        <span>{selectedProject ? `${selectedProject.name.toUpperCase()} / ${selectedProject.role}` : "NO PROJECT ACCESS"} // HTTP · TCP · DNS · TLS</span>
       </footer>
     </main>
   );

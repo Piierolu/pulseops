@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
+import { accessToken, isDemoMode, isTrustedOrigin } from "../../../../lib/auth";
 
 const CONTROL_PLANE_URL = process.env.CONTROL_PLANE_INTERNAL_URL ?? "http://localhost:8082/api";
-const ALLOW_UNAUTHENTICATED_MUTATIONS = process.env.ALLOW_UNAUTHENTICATED_MUTATIONS === "true";
 const SAFE_PATH_SEGMENT = /^[A-Za-z0-9_-]+$/;
 
 type RouteContext = {
@@ -13,8 +13,8 @@ async function proxy(request: NextRequest, context: RouteContext) {
   if (path.length === 0 || path.some((segment) => !SAFE_PATH_SEGMENT.test(segment))) {
     return Response.json({ error: "Invalid control-plane path" }, { status: 400 });
   }
-  if (!["GET", "HEAD"].includes(request.method) && !ALLOW_UNAUTHENTICATED_MUTATIONS) {
-    return Response.json({ error: "Authentication is required for mutations" }, { status: 403 });
+  if (!["GET", "HEAD"].includes(request.method) && !isTrustedOrigin(request.headers.get("origin"))) {
+    return Response.json({ error: "Invalid request origin" }, { status: 403 });
   }
 
   const base = new URL(`${CONTROL_PLANE_URL.replace(/\/$/, "")}/`);
@@ -25,9 +25,16 @@ async function proxy(request: NextRequest, context: RouteContext) {
   target.search = request.nextUrl.search;
 
   const headers = new Headers();
-  for (const name of ["accept", "content-type", "authorization"]) {
+  for (const name of ["accept", "content-type"]) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
+  }
+  if (!isDemoMode()) {
+    try {
+      headers.set("authorization", `Bearer ${await accessToken()}`);
+    } catch {
+      return Response.json({ error: "Authentication required" }, { status: 401 });
+    }
   }
   const response = await fetch(target, {
     method: request.method,
