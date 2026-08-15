@@ -9,7 +9,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-class CommandOutboxRepository {
+public class CommandOutboxRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -17,25 +17,40 @@ class CommandOutboxRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    void enqueue(CheckCommand command, String topic, String payload, TraceHeaders traceHeaders) {
+    void enqueue(
+            CheckCommand command,
+            long monitorVersion,
+            String topic,
+            String payload,
+            TraceHeaders traceHeaders
+    ) {
         jdbcTemplate.update("""
                 INSERT INTO command_outbox (
                     execution_id, monitor_id, location, scheduled_at,
-                    destination_topic, message_key, payload, traceparent, tracestate
+                    monitor_version, destination_topic, message_key, payload, traceparent, tracestate
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?)
                 ON CONFLICT DO NOTHING
                 """,
                 command.executionId(),
                 command.monitorId(),
                 command.location(),
                 Timestamp.from(command.scheduledAt()),
+                monitorVersion,
                 topic,
                 command.executionId().toString(),
                 payload,
                 traceHeaders.traceparent(),
                 traceHeaders.tracestate()
         );
+    }
+
+    public boolean belongsToLifecycle(UUID executionId, UUID monitorId, long monitorVersion) {
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM command_outbox
+                WHERE execution_id = ? AND monitor_id = ? AND monitor_version = ?
+                """, Integer.class, executionId, monitorId, monitorVersion);
+        return count != null && count == 1;
     }
 
     @Transactional
@@ -46,6 +61,7 @@ class CommandOutboxRepository {
                     SELECT execution_id
                     FROM command_outbox
                     WHERE published_at IS NULL
+                      AND cancelled_at IS NULL
                       AND available_at <= now()
                       AND (claimed_until IS NULL OR claimed_until < now())
                     ORDER BY created_at
@@ -111,7 +127,7 @@ class CommandOutboxRepository {
 
     double pendingCount() {
         Long count = jdbcTemplate.queryForObject(
-                "SELECT count(*) FROM command_outbox WHERE published_at IS NULL",
+                "SELECT count(*) FROM command_outbox WHERE published_at IS NULL AND cancelled_at IS NULL",
                 Long.class
         );
         return count == null ? 0 : count.doubleValue();
@@ -121,7 +137,7 @@ class CommandOutboxRepository {
         Double age = jdbcTemplate.queryForObject("""
                 SELECT COALESCE(EXTRACT(EPOCH FROM now() - min(created_at)), 0)
                 FROM command_outbox
-                WHERE published_at IS NULL
+                WHERE published_at IS NULL AND cancelled_at IS NULL
                 """, Double.class);
         return age == null ? 0 : Math.max(0, age);
     }

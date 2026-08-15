@@ -110,7 +110,9 @@ h2 { margin: 5px 0 0; font-size: 23px; letter-spacing: -.025em; font-weight: 500
 .eventCount { width: 29px; height: 29px; display: grid; place-items: center; border: 1px solid var(--line); color: var(--muted); font: 11px Consolas, monospace; }
 .monitorLabels { display: grid; grid-template-columns: minmax(270px, 1.7fr) .65fr .55fr 1fr; gap: 14px; padding: 10px 20px; background: #0d1010; border-bottom: 1px solid var(--line); }
 .monitorRow { display: grid; grid-template-columns: minmax(270px, 1.7fr) .65fr .55fr 1fr; gap: 14px; min-height: 93px; align-items: center; padding: 15px 20px; border-bottom: 1px solid #222624; transition: background .15s; }
+.monitorRowButton { width: 100%; border-top: 0; border-left: 0; border-right: 0; color: inherit; background: transparent; text-align: left; }
 .monitorRow:hover { background: #151918; }
+.monitorRow.isSelected { background: #151918; box-shadow: inset 3px 0 var(--cyan); }
 .monitorRow:last-child { border-bottom: 0; }
 .monitorIdentity { display: flex; align-items: center; gap: 13px; min-width: 0; }
 .monitorIdentity strong { display: block; font-size: 15px; margin-bottom: 6px; }
@@ -120,10 +122,14 @@ h2 { margin: 5px 0 0; font-size: 23px; letter-spacing: -.025em; font-weight: 500
 .servicePulse.up { background: var(--signal); box-shadow: 0 0 15px rgba(185,242,74,.25); }
 .servicePulse.degraded, .servicePulse.recovering { background: #f2c84b; }
 .servicePulse.down { background: var(--warning); }
+.servicePulse.paused { background: var(--cyan); opacity: .55; }
+.servicePulse.archived { background: #4a504d; }
 .statusTag { display: inline-block; min-width: 79px; padding: 6px 8px; border: 1px solid #3a403d; color: var(--muted); font: 700 9px Consolas, monospace; text-align: center; letter-spacing: .08em; }
 .statusTag.up { border-color: #50662b; color: var(--signal); background: rgba(185,242,74,.04); }
 .statusTag.down { border-color: #7e3d22; color: var(--warning); background: rgba(255,122,47,.06); }
 .statusTag.degraded, .statusTag.recovering { color: #f2c84b; border-color: #6a5d2d; }
+.statusTag.paused { color: var(--cyan); border-color: #31514e; }
+.statusTag.archived { color: #69716c; border-color: #343936; }
 .latencyValue strong { font: 22px Consolas, monospace; }
 .latencyValue span { color: var(--muted); font: 10px Consolas, monospace; }
 .availabilityCell > strong { font: 13px Consolas, monospace; }
@@ -143,6 +149,42 @@ h2 { margin: 5px 0 0; font-size: 23px; letter-spacing: -.025em; font-weight: 500
 .emptyState { min-height: 160px; display: grid; place-content: center; text-align: center; color: var(--muted); }
 .emptyState span { color: var(--signal); font: 32px Consolas, monospace; }
 .emptyState p { font: 11px Consolas, monospace; }
+
+.monitorDetailPanel { border: 1px solid var(--line); background: rgba(17,20,20,.96); min-width: 0; }
+.detailHeader .panelClose { margin: 0; }
+.detailError { padding: 11px 18px; border-bottom: 1px solid #753c25; background: #28160f; color: #ffc09d; font: 11px Consolas, monospace; }
+.detailFacts { display: grid; grid-template-columns: 1fr 1fr; padding: 14px 18px; gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
+.detailFact { min-width: 0; padding: 11px; background: #101313; }
+.detailFact.wide { grid-column: 1 / -1; }
+.detailFact span { display: block; color: var(--muted); font: 8px Consolas, monospace; letter-spacing: .12em; }
+.detailFact strong { display: block; margin-top: 6px; font: 11px Consolas, monospace; overflow-wrap: anywhere; }
+.monitorActions { padding: 14px 18px; display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--line); }
+.monitorActions button, .editActions button { min-height: 35px; border: 1px solid var(--line); background: transparent; color: var(--paper); padding: 8px 11px; font: 700 9px Consolas, monospace; }
+.monitorActions button:hover, .editActions button:hover { border-color: var(--cyan); color: var(--cyan); }
+.monitorActions button.positive, .editActions button.positive { color: var(--signal); border-color: #50662b; }
+.monitorActions button.danger { color: var(--warning); border-color: #753c25; }
+.monitorActions button:disabled, .editActions button:disabled { opacity: .45; cursor: wait; }
+.readOnlyLabel { margin: 0; padding: 14px 18px; color: var(--muted); border-bottom: 1px solid var(--line); font: 9px Consolas, monospace; }
+.monitorEditForm { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+.monitorEditForm label { color: var(--muted); font: 600 8px Consolas, monospace; letter-spacing: .1em; }
+.monitorEditForm input, .monitorEditForm select { width: 100%; margin-top: 6px; border: 1px solid var(--line); background: #090b0b; color: var(--paper); padding: 9px; outline: none; }
+.monitorEditForm input:focus, .monitorEditForm select:focus { border-color: var(--cyan); }
+.monitorEditForm .wideField, .editActions { grid-column: 1 / -1; }
+.editActions { display: flex; justify-content: flex-end; gap: 8px; }
+.historyHeader { padding: 12px 18px; border-bottom: 1px solid var(--line); background: #0d1010; }
+.resultHistory { max-height: 430px; overflow: auto; }
+.resultItem { padding: 13px 18px; border-bottom: 1px solid #222624; }
+.resultItem:last-child { border-bottom: 0; }
+.resultTitle { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.resultTitle strong { font: 700 9px Consolas, monospace; letter-spacing: .08em; }
+.resultTitle strong.success { color: var(--signal); }
+.resultTitle strong.failure { color: var(--warning); }
+.resultTitle time { color: var(--muted); font: 8px Consolas, monospace; }
+.resultItem p { margin: 7px 0 0; color: var(--muted); font: 10px Consolas, monospace; }
+.resultItem > code { display: block; margin-top: 8px; color: #ffc09d; font: 9px Consolas, monospace; white-space: normal; }
+.resultItem details { margin-top: 9px; color: var(--muted); font: 8px Consolas, monospace; }
+.resultItem summary { cursor: pointer; }
+.resultItem pre { overflow: auto; color: var(--cyan); font: 8px/1.5 Consolas, monospace; }
 
 .agentPanel { margin-top: 18px; border: 1px solid var(--line); background: rgba(17,20,20,.96); }
 .agentList { display: grid; grid-template-columns: repeat(3, 1fr); }

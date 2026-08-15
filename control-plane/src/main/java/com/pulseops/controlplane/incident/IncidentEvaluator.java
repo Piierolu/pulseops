@@ -1,6 +1,7 @@
 package com.pulseops.controlplane.incident;
 
 import com.pulseops.controlplane.execution.CheckResultMessage;
+import com.pulseops.controlplane.execution.CommandOutboxRepository;
 import com.pulseops.controlplane.monitor.MonitorResponse;
 import com.pulseops.controlplane.monitor.MonitorService;
 import io.micrometer.core.instrument.Counter;
@@ -18,6 +19,7 @@ public class IncidentEvaluator {
     private final MonitorStateRepository states;
     private final IncidentRepository incidents;
     private final MonitorService monitors;
+    private final CommandOutboxRepository outbox;
     private final ApplicationEventPublisher events;
     private final Clock clock;
     private final Counter openedCounter;
@@ -27,6 +29,7 @@ public class IncidentEvaluator {
             MonitorStateRepository states,
             IncidentRepository incidents,
             MonitorService monitors,
+            CommandOutboxRepository outbox,
             ApplicationEventPublisher events,
             Clock clock,
             MeterRegistry meterRegistry
@@ -34,6 +37,7 @@ public class IncidentEvaluator {
         this.states = states;
         this.incidents = incidents;
         this.monitors = monitors;
+        this.outbox = outbox;
         this.events = events;
         this.clock = clock;
         this.openedCounter = Counter.builder("pulseops.incidents.opened").register(meterRegistry);
@@ -41,7 +45,10 @@ public class IncidentEvaluator {
     }
 
     public void evaluate(CheckResultMessage result) {
-        if (monitors.findForBackgroundForUpdate(result.monitorId()).archivedAt() != null) {
+        MonitorResponse monitor = monitors.findForBackgroundForUpdate(result.monitorId());
+        if (!monitor.enabled() || monitor.archivedAt() != null
+                || !outbox.belongsToLifecycle(
+                        result.executionId(), result.monitorId(), monitor.lifecycleVersion())) {
             return;
         }
         Instant now = clock.instant();

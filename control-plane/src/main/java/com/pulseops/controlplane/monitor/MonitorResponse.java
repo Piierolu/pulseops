@@ -20,7 +20,8 @@ public record MonitorResponse(
         boolean enabled,
         Instant createdAt,
         Instant updatedAt,
-        Instant archivedAt
+        Instant archivedAt,
+        long lifecycleVersion
 ) {
     static MonitorResponse from(Monitor monitor) {
         return new MonitorResponse(
@@ -40,7 +41,8 @@ public record MonitorResponse(
                 monitor.isEnabled(),
                 monitor.getCreatedAt(),
                 monitor.getUpdatedAt(),
-                monitor.getArchivedAt()
+                monitor.getArchivedAt(),
+                monitor.getLifecycleVersion()
         );
     }
 }

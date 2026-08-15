@@ -37,12 +37,12 @@ public class CheckDispatchService {
 
     @Transactional
     public void enqueue(UUID monitorId, Instant scheduledAt) {
-        MonitorResponse monitor = monitors.findForBackground(monitorId);
+        MonitorResponse monitor = monitors.findForBackgroundForUpdate(monitorId);
         if (!monitor.enabled() || monitor.archivedAt() != null) {
             return;
         }
         Instant scheduleSlot = scheduledAt.truncatedTo(ChronoUnit.MILLIS);
-        UUID executionId = executionId(monitorId, location, scheduleSlot);
+        UUID executionId = executionId(monitorId, location, scheduleSlot, monitor.lifecycleVersion());
         CheckCommand command = new CheckCommand(
                 executionId,
                 monitor.id(),
@@ -61,14 +61,20 @@ public class CheckDispatchService {
                 )
         );
         try {
-            outbox.enqueue(command, commandsTopic, objectMapper.writeValueAsString(command), TraceHeaders.capture());
+            outbox.enqueue(
+                    command,
+                    monitor.lifecycleVersion(),
+                    commandsTopic,
+                    objectMapper.writeValueAsString(command),
+                    TraceHeaders.capture()
+            );
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Could not serialize check command " + executionId, exception);
         }
     }
 
-    static UUID executionId(UUID monitorId, String location, Instant scheduledAt) {
-        String source = monitorId + ":" + location + ":" + scheduledAt.toEpochMilli();
+    static UUID executionId(UUID monitorId, String location, Instant scheduledAt, long monitorVersion) {
+        String source = monitorId + ":" + location + ":" + scheduledAt.toEpochMilli() + ":" + monitorVersion;
         return UUID.nameUUIDFromBytes(source.getBytes(StandardCharsets.UTF_8));
     }
 }

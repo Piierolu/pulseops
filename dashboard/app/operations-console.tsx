@@ -2,6 +2,7 @@
 
 import { FormEvent, startTransition, useEffect, useState } from "react";
 import { TeamMembersPanel } from "./team-members-panel";
+import { MonitorDetailPanel } from "./monitor-detail-panel";
 
 const API_URL = "/api/control-plane";
 
@@ -56,11 +57,24 @@ type Project = {
   role: ProjectRole;
 };
 
+type MonitorInventory = {
+  id: string;
+  name: string;
+  type: MonitorSnapshot["type"];
+  targetUrl: string | null;
+  host: string | null;
+  port: number | null;
+  enabled: boolean;
+  archivedAt: string | null;
+};
+
 export function OperationsConsole({ grafanaUrl, demoMode }: { grafanaUrl: string; demoMode: boolean }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
+  const [inventory, setInventory] = useState<MonitorInventory[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [selectedMonitorId, setSelectedMonitorId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
@@ -105,23 +119,26 @@ export function OperationsConsole({ grafanaUrl, demoMode }: { grafanaUrl: string
 
     async function load() {
       try {
-        const [overviewResponse, incidentsResponse] = await Promise.all([
+        const [overviewResponse, incidentsResponse, inventoryResponse] = await Promise.all([
           fetch(`${API_URL}/projects/${projectId}/overview`, { cache: "no-store" }),
           fetch(`${API_URL}/projects/${projectId}/incidents`, { cache: "no-store" }),
+          fetch(`${API_URL}/projects/${projectId}/monitors?includeArchived=true`, { cache: "no-store" }),
         ]);
-        if ([overviewResponse, incidentsResponse].some((response) => response.status === 401)) {
+        if ([overviewResponse, incidentsResponse, inventoryResponse].some((response) => response.status === 401)) {
           window.location.assign("/api/auth/login?returnTo=/");
           return;
         }
-        if (!overviewResponse.ok || !incidentsResponse.ok) {
+        if (!overviewResponse.ok || !incidentsResponse.ok || !inventoryResponse.ok) {
           throw new Error("El control plane respondio con un error");
         }
         const nextOverview = (await overviewResponse.json()) as Overview;
         const nextIncidents = (await incidentsResponse.json()) as Incident[];
+        const nextInventory = (await inventoryResponse.json()) as MonitorInventory[];
         if (active) {
           startTransition(() => {
             setOverview(nextOverview);
             setIncidents(nextIncidents.slice(0, 8));
+            setInventory(nextInventory);
             setError(null);
           });
         }
@@ -144,6 +161,8 @@ export function OperationsConsole({ grafanaUrl, demoMode }: { grafanaUrl: string
     window.localStorage.setItem("pulseops.projectId", nextProjectId);
     setOverview(null);
     setIncidents([]);
+    setInventory([]);
+    setSelectedMonitorId(null);
     setShowCreate(false);
     setShowMembers(false);
     setProjectId(nextProjectId);
@@ -201,7 +220,22 @@ export function OperationsConsole({ grafanaUrl, demoMode }: { grafanaUrl: string
   const stats = overview?.stats;
   const selectedProject = projects.find((project) => project.id === projectId);
   const canEdit = selectedProject ? selectedProject.role !== "VIEWER" : false;
-  const monitorNames = new Map(overview?.monitors.map((monitor) => [monitor.id, monitor.name]));
+  const monitorNames = new Map(inventory.map((monitor) => [monitor.id, monitor.name]));
+  const snapshots = new Map(overview?.monitors.map((monitor) => [monitor.id, monitor]));
+  const displayedMonitors: MonitorSnapshot[] = inventory.map((monitor) => {
+    const snapshot = snapshots.get(monitor.id);
+    return snapshot ?? {
+      id: monitor.id,
+      name: monitor.name,
+      type: monitor.type,
+      target: monitor.targetUrl ?? (monitor.port ? `${monitor.host}:${monitor.port}` : monitor.host ?? "--"),
+      status: monitor.archivedAt ? "ARCHIVED" : monitor.enabled ? "PENDING" : "PAUSED",
+      lastCheckStatus: null,
+      lastLatencyMs: null,
+      lastCheckedAt: null,
+      availability24h: null,
+    };
+  });
   const platformState = !overview
     ? "CONNECTING"
     : stats?.downMonitors || stats?.degradedMonitors
@@ -293,12 +327,28 @@ export function OperationsConsole({ grafanaUrl, demoMode }: { grafanaUrl: string
           </div>
           <div className="monitorList">
             {!overview && <EmptyState text="Establishing telemetry link..." />}
-            {overview?.monitors.length === 0 && <EmptyState text="No probes deployed. Create the first monitor." />}
-            {overview?.monitors.map((monitor) => <MonitorRow key={monitor.id} monitor={monitor} />)}
+            {overview && displayedMonitors.length === 0 && <EmptyState text="No probes deployed. Create the first monitor." />}
+            {displayedMonitors.map((monitor) => (
+              <MonitorRow
+                key={monitor.id}
+                monitor={monitor}
+                selected={selectedMonitorId === monitor.id}
+                onSelect={() => setSelectedMonitorId(monitor.id)}
+              />
+            ))}
           </div>
         </section>
 
-        <aside className="incidentPanel">
+        {selectedMonitorId && projectId ? (
+          <MonitorDetailPanel
+            key={selectedMonitorId}
+            projectId={projectId}
+            monitorId={selectedMonitorId}
+            canEdit={canEdit}
+            onClose={() => setSelectedMonitorId(null)}
+            onChanged={() => setRefreshKey((current) => current + 1)}
+          />
+        ) : <aside className="incidentPanel">
           <div className="sectionHeader">
             <div><p className="sectionCode">EVENT STREAM</p><h2>Incidents</h2></div>
             <span className="eventCount">{incidents.length}</span>
@@ -319,7 +369,7 @@ export function OperationsConsole({ grafanaUrl, demoMode }: { grafanaUrl: string
               </article>
             ))}
           </div>
-        </aside>
+        </aside>}
       </div>
 
       <footer>
@@ -334,15 +384,15 @@ function Metric({ label, value, detail, tone }: { label: string; value: string; 
   return <article className={`metricCard ${tone}`}><p>{label}</p><strong>{value}</strong><span>{detail}</span></article>;
 }
 
-function MonitorRow({ monitor }: { monitor: MonitorSnapshot }) {
+function MonitorRow({ monitor, selected, onSelect }: { monitor: MonitorSnapshot; selected: boolean; onSelect: () => void }) {
   const availability = monitor.availability24h ?? 0;
   return (
-    <article className="monitorRow">
+    <button type="button" className={`monitorRow monitorRowButton ${selected ? "isSelected" : ""}`} onClick={onSelect}>
       <div className="monitorIdentity"><span className={`servicePulse ${monitor.status.toLowerCase()}`} /><div><strong>{monitor.name}<span className="protocolTag">{monitor.type}</span></strong><code>{monitor.target}</code></div></div>
       <div><span className={`statusTag ${monitor.status.toLowerCase()}`}>{monitor.status}</span></div>
       <div className="latencyValue"><strong>{monitor.lastLatencyMs ?? "--"}</strong><span> ms</span></div>
       <div className="availabilityCell"><strong>{formatAvailability(monitor.availability24h)}</strong><div className="availabilityTrack"><span style={{ width: `${availability}%` }} /></div><time>{monitor.lastCheckedAt ? formatDate(monitor.lastCheckedAt) : "awaiting first result"}</time></div>
-    </article>
+    </button>
   );
 }
 

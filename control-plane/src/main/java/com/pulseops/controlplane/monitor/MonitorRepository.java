@@ -13,6 +13,8 @@ interface MonitorRepository extends JpaRepository<Monitor, UUID> {
 
     List<Monitor> findAllByProjectIdAndArchivedAtIsNullOrderByCreatedAtDesc(UUID projectId);
 
+    List<Monitor> findAllByProjectIdOrderByCreatedAtDesc(UUID projectId);
+
     Optional<Monitor> findByIdAndProjectIdAndArchivedAtIsNull(UUID id, UUID projectId);
 
     Optional<Monitor> findByIdAndProjectId(UUID id, UUID projectId);
@@ -25,8 +27,18 @@ interface MonitorRepository extends JpaRepository<Monitor, UUID> {
     );
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT m FROM Monitor m WHERE m.id = :id AND m.projectId = :projectId")
+    Optional<Monitor> findByIdAndProjectIdForUpdate(
+            @Param("id") UUID id,
+            @Param("projectId") UUID projectId
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT m FROM Monitor m WHERE m.id = :id")
     Optional<Monitor> findByIdForUpdate(@Param("id") UUID id);
+
+    @Query("SELECT m.id FROM Monitor m")
+    List<UUID> findAllIds();
 
     List<Monitor> findAllByEnabledTrueAndArchivedAtIsNull();
 }

@@ -7,6 +7,9 @@ metadata:
     app.kubernetes.io/component: control-plane
 spec:
   replicas: {{ .Values.controlPlane.replicas }}
+  # Lifecycle migrations are not compatible with replicas running the previous release.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/instance: {{ .Release.Name }}

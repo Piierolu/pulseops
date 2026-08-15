@@ -1,13 +1,18 @@
 package com.pulseops.controlplane.monitor;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.pulseops.controlplane.incident.IncidentLifecycleService;
 import java.net.URI;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -31,7 +36,10 @@ class MonitorServiceTest {
     private MonitorRepository repository;
 
     @Mock
-    private MonitorScheduleService schedules;
+    private MonitorScheduleCoordinator schedules;
+
+    @Mock
+    private IncidentLifecycleService incidents;
 
     @Mock
     private JdbcTemplate jdbcTemplate;
@@ -40,7 +48,9 @@ class MonitorServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new MonitorService(repository, schedules, jdbcTemplate, Clock.fixed(NOW, ZoneOffset.UTC));
+        service = new MonitorService(
+                repository, schedules, incidents, jdbcTemplate, Clock.fixed(NOW, ZoneOffset.UTC)
+        );
     }
 
     @Test
@@ -57,7 +67,19 @@ class MonitorServiceTest {
         assertThat(response.projectId()).isEqualTo(PROJECT_ID);
         assertThat(response.targetUrl()).isEqualTo("https://example.com/health");
         assertThat(response.createdAt()).isEqualTo(NOW);
-        verify(schedules).schedule(org.mockito.ArgumentMatchers.any(Monitor.class));
+        verify(schedules).reconcile(response.id());
+    }
+
+    @Test
+    void doesNotFailCreationWhenImmediateScheduleReconciliationFails() {
+        when(repository.save(org.mockito.ArgumentMatchers.any(Monitor.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        doThrow(new IllegalStateException("Quartz unavailable"))
+                .when(schedules).reconcile(org.mockito.ArgumentMatchers.any(UUID.class));
+
+        assertThatCode(() -> service.create(PROJECT_ID, new CreateMonitorRequest(
+                "Public API", URI.create("https://example.com/health"), 60, 5000, 200
+        ))).doesNotThrowAnyException();
     }
 
     @Test
@@ -156,7 +178,7 @@ class MonitorServiceTest {
     void doesNotResolveAMonitorThroughAnotherProject() {
         UUID monitorId = UUID.fromString("828289fc-9bf1-4133-a822-d42942c0f38a");
         UUID otherProject = UUID.fromString("48a53e1c-796a-4799-909e-a6db26d9bd90");
-        when(repository.findByIdAndProjectIdAndArchivedAtIsNull(monitorId, otherProject))
+        when(repository.findByIdAndProjectId(monitorId, otherProject))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.findById(otherProject, monitorId))
@@ -165,26 +187,109 @@ class MonitorServiceTest {
 
     @Test
     void archivesAndUnschedulesWithoutDeletingTheMonitor() {
-        AtomicReference<Monitor> persisted = new AtomicReference<>();
+        UUID monitorId = UUID.fromString("828289fc-9bf1-4133-a822-d42942c0f38a");
+        Monitor monitor = monitor(monitorId);
+        AtomicReference<Monitor> persisted = new AtomicReference<>(monitor);
         when(repository.save(org.mockito.ArgumentMatchers.any(Monitor.class))).thenAnswer(invocation -> {
-            Monitor monitor = invocation.getArgument(0);
-            persisted.set(monitor);
-            return monitor;
+            Monitor saved = invocation.getArgument(0);
+            persisted.set(saved);
+            return saved;
         });
-        MonitorResponse created = service.create(PROJECT_ID, new CreateMonitorRequest(
-                "Public API", URI.create("https://example.com/health"), 60, 5000, 200
-        ));
-        when(repository.findActiveByIdAndProjectIdForUpdate(created.id(), PROJECT_ID))
-                .thenReturn(Optional.of(persisted.get()));
+        when(repository.findActiveByIdAndProjectIdForUpdate(monitorId, PROJECT_ID))
+                .thenReturn(Optional.of(monitor));
 
-        service.archive(PROJECT_ID, created.id());
+        service.archive(PROJECT_ID, monitorId);
 
         assertThat(persisted.get().isEnabled()).isFalse();
         assertThat(persisted.get().getArchivedAt()).isEqualTo(NOW);
-        verify(schedules).unschedule(created.id());
+        verify(schedules).reconcile(monitorId);
+        verify(incidents).resolveOpen(monitorId, "Public API", NOW);
+    }
+
+    @Test
+    void pausesAndInvalidatesTheCurrentLifecycle() {
+        UUID monitorId = UUID.fromString("828289fc-9bf1-4133-a822-d42942c0f38a");
+        Monitor monitor = monitor(monitorId);
+        when(repository.findActiveByIdAndProjectIdForUpdate(monitorId, PROJECT_ID))
+                .thenReturn(Optional.of(monitor));
+
+        MonitorResponse response = service.pause(PROJECT_ID, monitorId);
+
+        assertThat(response.enabled()).isFalse();
+        assertThat(response.lifecycleVersion()).isEqualTo(1);
+        verify(schedules).reconcile(monitorId);
         verify(jdbcTemplate).update(
-                argThat(sql -> sql.contains("UPDATE incidents")),
-                eq(NOW), eq(NOW), eq(created.id())
+                argThat(sql -> sql.contains("UPDATE command_outbox")), eq(Timestamp.from(NOW)), eq(monitorId)
+        );
+    }
+
+    @Test
+    void resumesFromPendingWithANewLifecycle() {
+        UUID monitorId = UUID.fromString("828289fc-9bf1-4133-a822-d42942c0f38a");
+        Monitor monitor = monitor(monitorId);
+        monitor.pause(NOW.minusSeconds(30));
+        when(repository.findActiveByIdAndProjectIdForUpdate(monitorId, PROJECT_ID))
+                .thenReturn(Optional.of(monitor));
+
+        MonitorResponse response = service.resume(PROJECT_ID, monitorId);
+
+        assertThat(response.enabled()).isTrue();
+        assertThat(response.lifecycleVersion()).isEqualTo(2);
+        verify(schedules).reconcile(monitorId);
+    }
+
+    @Test
+    void restoresAnArchivedMonitorAsPaused() {
+        UUID monitorId = UUID.fromString("828289fc-9bf1-4133-a822-d42942c0f38a");
+        Monitor monitor = monitor(monitorId);
+        monitor.archive(NOW.minusSeconds(30));
+        when(repository.findByIdAndProjectIdForUpdate(monitorId, PROJECT_ID))
+                .thenReturn(Optional.of(monitor));
+
+        MonitorResponse response = service.restore(PROJECT_ID, monitorId);
+
+        assertThat(response.archivedAt()).isNull();
+        assertThat(response.enabled()).isFalse();
+        assertThat(response.lifecycleVersion()).isEqualTo(2);
+        verify(schedules).reconcile(monitorId);
+    }
+
+    @Test
+    void rejectsRestoringAnActiveMonitorWithoutChangingItsSchedule() {
+        UUID monitorId = UUID.fromString("828289fc-9bf1-4133-a822-d42942c0f38a");
+        when(repository.findByIdAndProjectIdForUpdate(monitorId, PROJECT_ID))
+                .thenReturn(Optional.of(monitor(monitorId)));
+
+        assertThatThrownBy(() -> service.restore(PROJECT_ID, monitorId))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("Monitor is not archived");
+        verifyNoInteractions(schedules, incidents, jdbcTemplate);
+    }
+
+    @Test
+    void replacesConfigurationAndReschedulesAnActiveMonitor() {
+        UUID monitorId = UUID.fromString("828289fc-9bf1-4133-a822-d42942c0f38a");
+        Monitor monitor = monitor(monitorId);
+        when(repository.findActiveByIdAndProjectIdForUpdate(monitorId, PROJECT_ID))
+                .thenReturn(Optional.of(monitor));
+        CreateMonitorRequest request = new CreateMonitorRequest(
+                "Renamed API", URI.create("https://example.com/ready"), 120, 4000, 204
+        );
+
+        MonitorResponse response = service.update(PROJECT_ID, monitorId, request);
+
+        assertThat(response.name()).isEqualTo("Renamed API");
+        assertThat(response.targetUrl()).isEqualTo("https://example.com/ready");
+        assertThat(response.frequencySeconds()).isEqualTo(120);
+        assertThat(response.lifecycleVersion()).isEqualTo(1);
+        verify(schedules).reconcile(monitorId);
+    }
+
+    private static Monitor monitor(UUID id) {
+        return new Monitor(
+                id, PROJECT_ID, "Public API", MonitorType.HTTP,
+                "https://example.com/health", null, null, null, null, null,
+                60, 5000, 200, true, NOW.minusSeconds(300)
         );
     }
 }

@@ -65,6 +65,9 @@ public class Monitor {
     @Column(name = "archived_at")
     private Instant archivedAt;
 
+    @Column(name = "lifecycle_version", nullable = false)
+    private long lifecycleVersion;
+
     protected Monitor() {
     }
 
@@ -171,9 +174,74 @@ public class Monitor {
         return archivedAt;
     }
 
+    public long getLifecycleVersion() {
+        return lifecycleVersion;
+    }
+
+    void updateConfiguration(
+            String name,
+            MonitorType type,
+            String targetUrl,
+            String targetHost,
+            Integer targetPort,
+            String dnsRecordType,
+            String expectedValue,
+            Integer tlsExpiryWarningDays,
+            int frequencySeconds,
+            int timeoutMs,
+            Integer expectedStatus,
+            Instant now
+    ) {
+        this.name = name;
+        this.type = type;
+        this.targetUrl = targetUrl;
+        this.targetHost = targetHost;
+        this.targetPort = targetPort;
+        this.dnsRecordType = dnsRecordType;
+        this.expectedValue = expectedValue;
+        this.tlsExpiryWarningDays = tlsExpiryWarningDays;
+        this.frequencySeconds = frequencySeconds;
+        this.timeoutMs = timeoutMs;
+        this.expectedStatus = expectedStatus;
+        advanceLifecycle(now);
+    }
+
+    boolean pause(Instant now) {
+        if (!enabled) {
+            return false;
+        }
+        enabled = false;
+        advanceLifecycle(now);
+        return true;
+    }
+
+    boolean resume(Instant now) {
+        if (enabled) {
+            return false;
+        }
+        enabled = true;
+        advanceLifecycle(now);
+        return true;
+    }
+
     void archive(Instant now) {
         enabled = false;
         archivedAt = now;
+        advanceLifecycle(now);
+    }
+
+    boolean restore(Instant now) {
+        if (archivedAt == null) {
+            return false;
+        }
+        archivedAt = null;
+        enabled = false;
+        advanceLifecycle(now);
+        return true;
+    }
+
+    private void advanceLifecycle(Instant now) {
+        lifecycleVersion++;
         updatedAt = now;
     }
 }

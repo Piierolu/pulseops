@@ -7,6 +7,7 @@ import org.quartz.ObjectAlreadyExistsException;
 import org.quartz.Scheduler;
 import org.quartz.SchedulerException;
 import org.quartz.SimpleScheduleBuilder;
+import org.quartz.SimpleTrigger;
 import org.quartz.TriggerKey;
 import org.quartz.TriggerBuilder;
 import org.springframework.stereotype.Service;
@@ -39,8 +40,18 @@ public class MonitorScheduleService {
 
     public void ensureScheduled(Monitor monitor) {
         try {
-            if (!scheduler.checkExists(jobKey(monitor.getId()))) {
+            JobKey jobKey = jobKey(monitor.getId());
+            TriggerKey triggerKey = triggerKey(monitor.getId());
+            if (!scheduler.checkExists(jobKey)) {
                 scheduler.scheduleJob(job(monitor), trigger(monitor));
+                return;
+            }
+            org.quartz.Trigger existing = scheduler.getTrigger(triggerKey);
+            if (existing == null) {
+                scheduler.scheduleJob(trigger(monitor));
+            } else if (!(existing instanceof SimpleTrigger simple)
+                    || simple.getRepeatInterval() != monitor.getFrequencySeconds() * 1000L) {
+                scheduler.rescheduleJob(triggerKey, trigger(monitor));
             }
         } catch (ObjectAlreadyExistsException ignored) {
             // Reconciliation is intentionally idempotent across replicas.
@@ -54,6 +65,14 @@ public class MonitorScheduleService {
             scheduler.deleteJob(jobKey(monitorId));
         } catch (SchedulerException exception) {
             throw new IllegalStateException("Could not unschedule monitor " + monitorId, exception);
+        }
+    }
+
+    public void reconcile(Monitor monitor) {
+        if (monitor.isEnabled() && monitor.getArchivedAt() == null) {
+            ensureScheduled(monitor);
+        } else {
+            unschedule(monitor.getId());
         }
     }
 
@@ -76,6 +95,7 @@ public class MonitorScheduleService {
     private org.quartz.Trigger trigger(Monitor monitor) {
         return TriggerBuilder.newTrigger()
                 .withIdentity(triggerKey(monitor.getId()))
+                .forJob(jobKey(monitor.getId()))
                 .startNow()
                 .withSchedule(SimpleScheduleBuilder.simpleSchedule()
                         .withIntervalInSeconds(monitor.getFrequencySeconds())
